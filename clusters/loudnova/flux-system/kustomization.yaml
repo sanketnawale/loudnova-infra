@@ -6,6 +6,7 @@ resources:
 - cloudnova-dashboard.yaml
 - cloudnova-web.yaml
 - flux-web.yaml
+- netdata.yaml
 
 patches:
   - target:
