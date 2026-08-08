@@ -5,3 +5,14 @@ resources:
 - gotk-sync.yaml
 - cloudnova-dashboard.yaml
 - cloudnova-web.yaml
+- flux-web.yaml
+
+patches:
+  - target:
+      kind: Namespace
+      name: flux-system
+    patch: |-
+      - op: add
+        path: /metadata/labels/loudnova.cloudnova.tech~1public-routes
+        value: "true"
+
