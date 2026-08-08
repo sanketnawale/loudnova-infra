@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hello-web-content
+  namespace: hello-web
+data:
+  index.html: |
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>LoudNova Kubernetes</title>
+      </head>
+      <body>
+        <h1>Hello from LoudNova</h1>
+        <p>Your K3s website is managed from the local repository.</p>
+      </body>
+    </html>

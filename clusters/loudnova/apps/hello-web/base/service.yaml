@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-web
+  namespace: hello-web
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: hello-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

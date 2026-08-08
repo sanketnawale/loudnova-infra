@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hello-web
+  labels:
+    app.kubernetes.io/part-of: loudnova-websites
+    app.kubernetes.io/managed-by: kustomize

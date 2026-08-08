@@ -1,0 +1,34 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+
+# Kubernetes credentials
+kubeconfig
+*.kubeconfig
+*.kubeconfig.yaml
+
+# Secrets
+*.secret.yaml
+*.secrets.yaml
+.env
+.env.*
+
+# Keys and certificates
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*.log
+backups/

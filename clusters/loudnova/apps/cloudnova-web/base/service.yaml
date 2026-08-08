@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudnova-web
+  namespace: cloudnova-web
+spec:
+  type: ClusterIP
+
+  selector:
+    app: cloudnova-web
+
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
