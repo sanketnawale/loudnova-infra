@@ -1,8 +1,0 @@
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
-metadata:
-  name: netdata
-  namespace: netdata
-spec:
-  interval: 1h
-  url: https://netdata.github.io/helmchart/
