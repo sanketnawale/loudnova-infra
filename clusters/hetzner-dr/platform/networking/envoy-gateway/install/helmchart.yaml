@@ -1,0 +1,25 @@
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: envoy-gateway
+  namespace: kube-system
+spec:
+  chart: oci://docker.io/envoyproxy/gateway-helm
+  version: v1.8.3
+
+  targetNamespace: envoy-gateway-system
+  createNamespace: true
+
+  timeout: 10m
+  failurePolicy: abort
+
+  valuesContent: |-
+    deployment:
+      envoyGateway:
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 300m
+            memory: 384Mi

@@ -1,0 +1,28 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: public-gateway
+  namespace: gateway-infra
+  labels:
+    app.kubernetes.io/name: public-gateway
+    app.kubernetes.io/part-of: cloudnova-platform
+spec:
+  gatewayClassName: eg
+
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: public-proxy
+
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              platform.cloudnova.tech/public-routes: "true"

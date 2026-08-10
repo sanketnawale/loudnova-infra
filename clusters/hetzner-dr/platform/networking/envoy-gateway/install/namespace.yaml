@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: envoy-gateway-system
+  labels:
+    app.kubernetes.io/name: envoy-gateway
+    app.kubernetes.io/part-of: loudnova-platform
+    app.kubernetes.io/managed-by: kustomize
