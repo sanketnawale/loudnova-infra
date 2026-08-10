@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: failover-controller
+  namespace: dr-controller
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+
+  selector:
+    matchLabels:
+      app: failover-controller
+
+  template:
+    metadata:
+      labels:
+        app: failover-controller
+
+    spec:
+      automountServiceAccountToken: false
+
+      containers:
+        - name: controller
+          image: python:3.13-alpine
+
+          command:
+            - python
+            - -u
+            - /app/controller.py
+
+          env:
+            - name: CF_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cloudflare-api
+                  key: token
+
+            - name: CF_ZONE_ID
+              value: "134047c0f3b7c1281a30143834358ffa"
+
+            - name: CF_RECORD_ID
+              value: "26c374336738132859145cf5620bf522"
+
+            - name: PRIMARY_TUNNEL
+              value: "169ba557-3504-4e5d-a6b3-85ea1b0d5da7.cfargotunnel.com"
+
+            - name: DR_TUNNEL
+              value: "ce0c3ef3-beaf-4d58-86a5-b9be66cf4f7f.cfargotunnel.com"
+
+            - name: PRIMARY_HEALTH_URL
+              value: "https://primary-health.cloudnova.tech/healthz"
+
+            - name: DR_HEALTH_URL
+              value: "https://dr-test.cloudnova.tech/healthz"
+
+            - name: CHECK_INTERVAL
+              value: "60"
+
+            - name: FAIL_THRESHOLD
+              value: "3"
+
+            - name: RECOVER_THRESHOLD
+              value: "5"
+
+          volumeMounts:
+            - name: code
+              mountPath: /app
+              readOnly: true
+
+          resources:
+            requests:
+              cpu: 10m
+              memory: 24Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+
+      volumes:
+        - name: code
+          configMap:
+            name: failover-controller-code
