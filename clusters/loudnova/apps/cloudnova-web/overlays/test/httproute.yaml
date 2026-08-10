@@ -12,6 +12,7 @@ spec:
   hostnames:
     - test.cloudnova.tech
     - cloudnova.tech
+    - primary-health.cloudnova.tech
 
   rules:
     - backendRefs:
