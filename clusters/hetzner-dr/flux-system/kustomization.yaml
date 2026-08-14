@@ -10,3 +10,4 @@ resources:
   - gotk-sync.yaml
   - failover-controller.yaml
   - cloudnova-dashboard.yaml
+  - permesso-admin.yaml

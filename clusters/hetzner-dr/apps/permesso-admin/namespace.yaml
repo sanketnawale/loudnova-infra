@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: permesso-admin
+  labels:
+    platform.cloudnova.tech/public-routes: "true"
+    app.kubernetes.io/part-of: cloudnova-platform
