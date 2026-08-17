@@ -39,6 +39,8 @@ spec:
                 secretKeyRef:
                   name: metabase-app-db
                   key: password
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Xms256m -Xmx768m"
           resources:
             requests:
               cpu: 100m
