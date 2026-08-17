@@ -12,6 +12,6 @@ ports:
     port: 3000
 endpoints:
   - addresses:
-      - "213.199.48.152"
+      - "10.77.0.2"
     conditions:
       ready: true
