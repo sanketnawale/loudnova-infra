@@ -8,7 +8,7 @@ spec:
     - name: public-gateway
       namespace: gateway-infra
   hostnames:
-    - stats.mira.cloudnova.tech
+    - mira-stats.cloudnova.tech
   rules:
     - backendRefs:
         - name: mira-metabase
