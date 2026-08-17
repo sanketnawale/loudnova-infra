@@ -11,3 +11,4 @@ resources:
   - failover-controller.yaml
   - cloudnova-dashboard.yaml
   - permesso-admin.yaml
+  - metabase-stats.yaml

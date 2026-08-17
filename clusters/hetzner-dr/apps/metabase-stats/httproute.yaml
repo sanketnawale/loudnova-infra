@@ -1,0 +1,18 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: metabase-stats
+  namespace: metabase-stats
+spec:
+  parentRefs:
+    - name: public-gateway
+      namespace: gateway-infra
+      sectionName: http
+
+  hostnames:
+    - stats.cloudnova.tech
+
+  rules:
+    - backendRefs:
+        - name: metabase-stats
+          port: 3000
