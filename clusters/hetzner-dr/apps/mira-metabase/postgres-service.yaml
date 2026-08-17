@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: metabase-postgres
+  namespace: mira-metabase
+spec:
+  type: ClusterIP
+  selector:
+    app: metabase-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432

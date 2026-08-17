@@ -12,3 +12,4 @@ resources:
   - cloudnova-dashboard.yaml
   - permesso-admin.yaml
   - metabase-stats.yaml
+  - mira-metabase.yaml

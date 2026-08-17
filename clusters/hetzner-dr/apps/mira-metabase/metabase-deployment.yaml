@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mira-metabase
+  namespace: mira-metabase
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mira-metabase
+  template:
+    metadata:
+      labels:
+        app: mira-metabase
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: metabase
+          image: metabase/metabase:latest
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: MB_DB_TYPE
+              value: postgres
+            - name: MB_DB_DBNAME
+              value: metabase
+            - name: MB_DB_PORT
+              value: "5432"
+            - name: MB_DB_HOST
+              value: metabase-postgres.mira-metabase.svc.cluster.local
+            - name: MB_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: metabase-app-db
+                  key: username
+            - name: MB_DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: metabase-app-db
+                  key: password
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 90
+            periodSeconds: 30
