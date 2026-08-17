@@ -5,6 +5,10 @@ metadata:
   namespace: mira-metabase
 spec:
   replicas: 1
+   
+  strategy:
+    type: Recreate
+
   selector:
     matchLabels:
       app: mira-metabase
@@ -40,7 +44,7 @@ spec:
                   name: metabase-app-db
                   key: password
             - name: JAVA_TOOL_OPTIONS
-              value: "-Xms256m -Xmx768m"
+              value: "-Xms256m -Xmx512m"
           resources:
             requests:
               cpu: 100m
