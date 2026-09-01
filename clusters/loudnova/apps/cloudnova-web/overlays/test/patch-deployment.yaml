@@ -12,4 +12,4 @@ spec:
     spec:
       containers:
         - name: cloudnova-web
-          image: ghcr.io/sanketnawale/cloudnova-v2:sha-20c700d
+          image: ghcr.io/sanketnawale/cloudnova-v2:sha-56b4dd0

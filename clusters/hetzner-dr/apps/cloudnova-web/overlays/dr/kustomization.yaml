@@ -7,7 +7,7 @@ resources:
 
 images:
   - name: ghcr.io/sanketnawale/cloudnova-v2
-    newTag: sha-20c700d
+    newTag: sha-56b4dd0
 
 patches:
   - path: patch-deployment.yaml
