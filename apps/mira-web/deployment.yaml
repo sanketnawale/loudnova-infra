@@ -17,7 +17,7 @@ spec:
         - name: ghcr-pull
       containers:
         - name: mira-web
-          image: ghcr.io/sanketnawale/mira:sha-1dd924b
+          image: ghcr.io/sanketnawale/mira:sha-0158f09
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
