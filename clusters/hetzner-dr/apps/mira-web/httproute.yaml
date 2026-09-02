@@ -8,7 +8,7 @@ spec:
     - name: public-gateway
       namespace: gateway-infra
   hostnames:
-    - mira-dr-test.cloudnova.tech
+    - mira.cloudnova.tech
   rules:
     - backendRefs:
         - name: mira-web
