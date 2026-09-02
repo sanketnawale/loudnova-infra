@@ -6,6 +6,8 @@ resources:
 - cloudnova-dashboard.yaml
 - cloudnova-web.yaml
 - flux-web.yaml
+- mira-web.yaml
+- paymentops-dev.yaml
 
 
 patches:

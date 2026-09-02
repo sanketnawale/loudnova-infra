@@ -13,3 +13,4 @@ resources:
   - permesso-admin.yaml
   - metabase-stats.yaml
   - mira-metabase.yaml
+  - mira-web.yaml
