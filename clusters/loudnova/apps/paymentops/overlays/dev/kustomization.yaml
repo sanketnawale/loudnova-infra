@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - httproute.yaml
+  - pdb.yaml
+
+patches:
+  - path: patch-api.yaml
+  - path: patch-web.yaml
+  - path: patch-worker.yaml

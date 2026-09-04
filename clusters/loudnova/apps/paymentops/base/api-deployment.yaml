@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paymentops-api
+  namespace: paymentops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: paymentops-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: paymentops-api
+    spec:
+      automountServiceAccountToken: false
+      # Private GHCR images; credential is a cluster-side secret (not committed to Git).
+      imagePullSecrets:
+        - name: ghcr-pull
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: paymentops-api
+          image: ghcr.io/cloodnova/paymentops-api:f9dd2449610fc9e0b8390b8bd101409fbc9a0c65
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: paymentops-config
+            - secretRef:
+                name: paymentops-secrets
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 101
+            runAsGroup: 101
+            capabilities:
+              drop: ["ALL"]
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 40m
+              memory: 96Mi
+            limits:
+              cpu: 400m
+              memory: 512Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: paymentops
+  labels:
+    # Only the web frontend is published via the public-gateway HTTPRoute.
+    # The label enables the Envoy Gateway to select this namespace for routes.
+    loudnova.cloudnova.tech/public-routes: "true"

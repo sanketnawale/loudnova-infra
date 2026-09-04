@@ -1,0 +1,21 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: paymentops-api
+  namespace: paymentops
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: paymentops-api
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: paymentops-web
+  namespace: paymentops
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: paymentops-web

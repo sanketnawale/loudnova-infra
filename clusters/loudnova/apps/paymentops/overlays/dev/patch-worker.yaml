@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paymentops-worker
+  namespace: paymentops
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        environment: dev
+    spec:
+      containers:
+        - name: paymentops-worker
+          image: ghcr.io/cloodnova/paymentops-worker:f9dd2449610fc9e0b8390b8bd101409fbc9a0c65
+

@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paymentops-web
+  namespace: paymentops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: paymentops-web
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: paymentops-web
+    spec:
+      automountServiceAccountToken: false
+      # Private GHCR images; credential is a cluster-side secret (not committed to Git).
+      imagePullSecrets:
+        - name: ghcr-pull
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: paymentops-web
+          image: ghcr.io/cloodnova/paymentops-web:f9dd2449610fc9e0b8390b8bd101409fbc9a0c65
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: NEXT_PUBLIC_API_URL
+              value: http://paymentops-api:8000
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 30m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi

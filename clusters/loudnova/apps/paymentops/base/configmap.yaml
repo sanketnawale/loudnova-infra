@@ -1,0 +1,27 @@
+# Non-secret application configuration. Real secrets live in secret.yaml (fake here).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: paymentops-config
+  namespace: paymentops
+data:
+  APP_ENVIRONMENT: "development"
+  APP_DEBUG: "false"
+  APP_VERSION: "0.1.0"
+  APP_LOG_LEVEL: "INFO"
+  API_HOST: "0.0.0.0"
+  API_PORT: "8000"
+  CORS_ALLOWED_ORIGINS: "https://paymentops-dev.cloudnova.tech,http://localhost:3000"
+  AI_ENABLED: "false"
+  AI_PROVIDER: "none"
+  ZERO_RETENTION_ENABLED: "true"
+  RAW_PAYLOAD_TTL_SECONDS: "0"
+  DATABASE_NAME: "paymentops"
+  DATABASE_USER: "paymentops"
+  DATABASE_HOST: "paymentops-postgres"
+  DATABASE_PORT: "5432"
+  REDIS_HOST: "paymentops-redis"
+  REDIS_PORT: "6379"
+  CELERY_BROKER_URL: "redis://paymentops-redis:6379/0"
+  CELERY_RESULT_BACKEND: "redis://paymentops-redis:6379/1"
+  METRICS_ENABLED: "true"

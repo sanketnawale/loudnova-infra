@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paymentops-worker
+  namespace: paymentops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: paymentops-worker
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: paymentops-worker
+    spec:
+      automountServiceAccountToken: false
+      # Private GHCR images; credential is a cluster-side secret (not committed to Git).
+      imagePullSecrets:
+        - name: ghcr-pull
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: paymentops-worker
+          image: ghcr.io/cloodnova/paymentops-worker:f9dd2449610fc9e0b8390b8bd101409fbc9a0c65
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: paymentops-config
+            - secretRef:
+                name: paymentops-secrets
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 101
+            runAsGroup: 101
+            capabilities:
+              drop: ["ALL"]
+          # Worker schedules no user HTTP port; probe that the worker process is alive.
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pgrep -f 'celery.*worker' >/dev/null || ps aux | grep '[c]elery.*worker' | head -1"]
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 30m
+              memory: 96Mi
+            limits:
+              cpu: 300m
+              memory: 512Mi

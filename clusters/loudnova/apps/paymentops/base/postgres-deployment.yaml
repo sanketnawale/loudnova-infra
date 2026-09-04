@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paymentops-postgres
+  namespace: paymentops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: paymentops-postgres
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: paymentops-postgres
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+              protocol: TCP
+          env:
+            - name: POSTGRES_DB
+              value: paymentops
+            - name: POSTGRES_USER
+              value: paymentops
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: paymentops-secrets
+                  key: DATABASE_PASSWORD
+          # Postgres must initialize as an unprivileged drop from the image's default
+          # entrypoint (it chows the data dir and drops to the postgres OS user). A
+          # non-root container cannot chmod a root-owned data volume, so Postgres is the
+          # documented exception to the non-root rule (see docs/security).
+          securityContext:
+            allowPrivilegeEscalation: false
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U paymentops -d paymentops"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U paymentops -d paymentops"]
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: paymentops-postgres-pvc
