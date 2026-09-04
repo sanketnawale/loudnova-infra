@@ -57,3 +57,10 @@ spec:
             limits:
               cpu: 300m
               memory: 512Mi
+          # Celery/billiard needs a writable temp dir; root FS is read-only.
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
