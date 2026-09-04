@@ -15,3 +15,7 @@ resources:
   - worker-deployment.yaml
   - web-deployment.yaml
   - web-service.yaml
+  - address-structuring-deployment.yaml
+  - address-structuring-service.yaml
+  - address-structuring-networkpolicy.yaml
+  - address-resources-pvc.yaml

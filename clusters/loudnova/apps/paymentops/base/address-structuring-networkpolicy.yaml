@@ -1,0 +1,22 @@
+# Only PaymentOps API/worker pods may reach the address-structuring service.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: paymentops-address-structuring-ingress
+  namespace: paymentops
+spec:
+  podSelector:
+    matchLabels:
+      app: paymentops-address-structuring
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values: ["paymentops-api", "paymentops-worker"]
+      ports:
+        - protocol: TCP
+          port: 8000

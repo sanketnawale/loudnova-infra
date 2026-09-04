@@ -1,13 +1,13 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: paymentops-api
+  name: paymentops-address-structuring
   namespace: paymentops
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: paymentops-api
+      app: paymentops-address-structuring
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -16,28 +16,22 @@ spec:
   template:
     metadata:
       labels:
-        app: paymentops-api
+        app: paymentops-address-structuring
     spec:
       automountServiceAccountToken: false
-      # Private GHCR images; credential is a cluster-side secret (not committed to Git).
       imagePullSecrets:
         - name: ghcr-pull
       securityContext:
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: paymentops-api
-          image: ghcr.io/cloodnova/paymentops-api:7922177f1a97b12f54d0a99ba449736c3fd96234
+        - name: address-structuring
+          image: ghcr.io/cloodnova/paymentops-address-structuring:7922177f1a97b12f54d0a99ba449736c3fd96234
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 8000
               protocol: TCP
-          envFrom:
-            - configMapRef:
-                name: paymentops-config
-            - secretRef:
-                name: paymentops-secrets
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -53,12 +47,12 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 5
             timeoutSeconds: 3
-            failureThreshold: 12
+            failureThreshold: 20
           readinessProbe:
             httpGet:
               path: /ready
               port: http
-            initialDelaySeconds: 3
+            initialDelaySeconds: 5
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 3
@@ -72,14 +66,21 @@ spec:
             failureThreshold: 3
           resources:
             requests:
-              cpu: 40m
-              memory: 96Mi
+              cpu: 50m
+              memory: 128Mi
             limits:
-              cpu: 400m
-              memory: 512Mi
+              cpu: 500m
+              memory: 1Gi
+          # Model + GeoNames-derived reference data is mounted read-only from a PVC.
           volumeMounts:
+            - name: resources
+              mountPath: /resources
+              readOnly: true
             - name: tmp
               mountPath: /tmp
       volumes:
+        - name: resources
+          persistentVolumeClaim:
+            claimName: paymentops-address-resources
         - name: tmp
           emptyDir: {}

@@ -25,3 +25,8 @@ data:
   CELERY_BROKER_URL: "redis://paymentops-redis:6379/0"
   CELERY_RESULT_BACKEND: "redis://paymentops-redis:6379/1"
   METRICS_ENABLED: "true"
+  # Address provider: use the internal Swift-derived component when it is ready.
+  ADDRESS_PROVIDER: "auto"
+  SWIFT_ADDRESS_URL: "http://paymentops-address-structuring:8000"
+  SWIFT_ADDRESS_TIMEOUT: "2.0"
+  SWIFT_ADDRESS_MAX_RETRIES: "1"

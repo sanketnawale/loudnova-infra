@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: paymentops-worker
+  name: paymentops-address-structuring
   namespace: paymentops
 spec:
   replicas: 1
@@ -11,6 +11,5 @@ spec:
         environment: dev
     spec:
       containers:
-        - name: paymentops-worker
-          image: ghcr.io/cloodnova/paymentops-worker:7922177f1a97b12f54d0a99ba449736c3fd96234
-
+        - name: address-structuring
+          image: ghcr.io/cloodnova/paymentops-address-structuring:7922177f1a97b12f54d0a99ba449736c3fd96234

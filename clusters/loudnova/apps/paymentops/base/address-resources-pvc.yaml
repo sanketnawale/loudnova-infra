@@ -1,0 +1,14 @@
+# PVC for the address-structuring reference data (model + GeoNames-derived data).
+# Provisioned at runtime; currently empty so the provider reports NOT READY and PaymentOps
+# falls back to CloudNova. Mounted read-only.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: paymentops-address-resources
+  namespace: paymentops
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi

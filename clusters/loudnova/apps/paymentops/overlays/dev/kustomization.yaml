@@ -10,3 +10,4 @@ patches:
   - path: patch-api.yaml
   - path: patch-web.yaml
   - path: patch-worker.yaml
+  - path: patch-address-structuring.yaml
