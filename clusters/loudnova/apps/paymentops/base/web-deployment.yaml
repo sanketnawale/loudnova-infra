@@ -27,7 +27,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: paymentops-web
-          image: ghcr.io/cloodnova/paymentops-web:0ded7aacb7ff6036279629635b6f386867ff0af9
+          image: ghcr.io/cloodnova/paymentops-web:b699110a98479219b55c47ed718677b362acfcf7
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
