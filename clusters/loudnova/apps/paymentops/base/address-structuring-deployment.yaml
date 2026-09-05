@@ -21,12 +21,28 @@ spec:
       automountServiceAccountToken: false
       imagePullSecrets:
         - name: ghcr-pull
+      # Seed the reference-data PVC from the bundled dev dataset (idempotent; no-clobber).
+      initContainers:
+        - name: seed-resources
+          image: ghcr.io/cloodnova/paymentops-address-structuring:08f5195b9cb485af59df774c951a5476733ab933
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "cp -rn /bundled-resources/* /resources/ || true"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 101
+            runAsGroup: 101
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: resources
+              mountPath: /resources
       securityContext:
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: address-structuring
-          image: ghcr.io/cloodnova/paymentops-address-structuring:0ded7aacb7ff6036279629635b6f386867ff0af9
+          image: ghcr.io/cloodnova/paymentops-address-structuring:08f5195b9cb485af59df774c951a5476733ab933
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -47,7 +63,7 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 5
             timeoutSeconds: 3
-            failureThreshold: 20
+            failureThreshold: 30
           readinessProbe:
             httpGet:
               path: /ready
@@ -66,12 +82,12 @@ spec:
             failureThreshold: 3
           resources:
             requests:
-              cpu: 50m
-              memory: 128Mi
+              cpu: 100m
+              memory: 200Mi
             limits:
-              cpu: 500m
+              cpu: 1000m
               memory: 1Gi
-          # Model + GeoNames-derived reference data is mounted read-only from a PVC.
+          # Model + reference data is mounted read-only from a PVC (seeded by initContainer).
           volumeMounts:
             - name: resources
               mountPath: /resources
