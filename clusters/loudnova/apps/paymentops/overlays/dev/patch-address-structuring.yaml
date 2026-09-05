@@ -12,4 +12,4 @@ spec:
     spec:
       containers:
         - name: address-structuring
-          image: ghcr.io/cloodnova/paymentops-address-structuring:0ded7aacb7ff6036279629635b6f386867ff0af9
+          image: ghcr.io/cloodnova/paymentops-address-structuring:de7e3d2fca25382c20b96004b7059497281af955
