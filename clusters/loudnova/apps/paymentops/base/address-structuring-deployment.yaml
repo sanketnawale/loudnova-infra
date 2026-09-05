@@ -25,7 +25,7 @@ spec:
       # the component's reference data, so it is wiped and re-seeded on each start.
       initContainers:
         - name: seed-resources
-          image: ghcr.io/cloodnova/paymentops-address-structuring:08f5195b9cb485af59df774c951a5476733ab933
+          image: ghcr.io/cloodnova/paymentops-address-structuring:de7e3d2fca25382c20b96004b7059497281af955
           imagePullPolicy: IfNotPresent
           command: ["sh", "-c", "rm -rf /resources/* ; cp -r /bundled-resources/* /resources/"]
           securityContext:
@@ -43,7 +43,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: address-structuring
-          image: ghcr.io/cloodnova/paymentops-address-structuring:08f5195b9cb485af59df774c951a5476733ab933
+          image: ghcr.io/cloodnova/paymentops-address-structuring:de7e3d2fca25382c20b96004b7059497281af955
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
