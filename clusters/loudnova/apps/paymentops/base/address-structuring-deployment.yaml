@@ -21,12 +21,13 @@ spec:
       automountServiceAccountToken: false
       imagePullSecrets:
         - name: ghcr-pull
-      # Seed the reference-data PVC from the bundled dev dataset (idempotent; no-clobber).
+      # Seed the reference-data PVC from the bundled dev dataset. This PVC is dedicated to
+      # the component's reference data, so it is wiped and re-seeded on each start.
       initContainers:
         - name: seed-resources
           image: ghcr.io/cloodnova/paymentops-address-structuring:08f5195b9cb485af59df774c951a5476733ab933
           imagePullPolicy: IfNotPresent
-          command: ["sh", "-c", "cp -rn /bundled-resources/* /resources/ || true"]
+          command: ["sh", "-c", "rm -rf /resources/* ; cp -r /bundled-resources/* /resources/"]
           securityContext:
             allowPrivilegeEscalation: false
             runAsNonRoot: true
