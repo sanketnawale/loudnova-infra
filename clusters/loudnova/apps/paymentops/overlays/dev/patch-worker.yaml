@@ -12,5 +12,5 @@ spec:
     spec:
       containers:
         - name: paymentops-worker
-          image: ghcr.io/cloodnova/paymentops-worker:43607fee55b06bf69e2a38805f5d06cf491fdc68
+          image: ghcr.io/cloodnova/paymentops-worker:27a6006a882f8c61c779f7174a0eb283a7e3bb5b
 
