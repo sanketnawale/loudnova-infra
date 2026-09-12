@@ -138,67 +138,105 @@ def real_web_search():
 
 
 def extract_verified_leads(results):
-    evidence = json.dumps(results, ensure_ascii=False)
+    indexed_results = []
+
+    for i, item in enumerate(results):
+        indexed_results.append(
+            {
+                "id": i,
+                "title": item["title"],
+                "url": item["url"],
+                "snippet": item["snippet"],
+            }
+        )
+
+    print("\nSEARCH RESULT SAMPLE:", flush=True)
+
+    for item in indexed_results[:5]:
+        print(
+            f"[{item['id']}] {item['title']} -> {item['url']}",
+            flush=True,
+        )
+
+    evidence = json.dumps(
+        indexed_results,
+        ensure_ascii=False,
+        indent=2,
+    )
 
     prompt = f"""
-You are the evidence-validation Research Agent for CloudNova.
+You are CloudNova's evidence-validation Research Agent.
 
 PRODUCT:
 {PRODUCT}
 
 Below are REAL WEB SEARCH RESULTS.
+Every result has an integer ID.
 
 {evidence}
 
-Return ONLY valid JSON.
+Identify at most 5 potential CUSTOMER organizations.
 
-Return a JSON array containing at most 5 organizations.
+Return ONLY a JSON array.
 
-Each object must contain exactly:
+Example:
 
-{{
-  "company": "organization name",
-  "source_url": "URL copied EXACTLY from the supplied results",
-  "why_fit": "short evidence-based explanation",
-  "target_role": "appropriate job role",
-  "confidence": 0
-}}
+[
+  {{
+    "result_index": 3,
+    "company": "Example Bank",
+    "why_fit": "The supplied result explicitly discusses its ISO 20022 payment migration.",
+    "target_role": "Head of Payments",
+    "confidence": 80
+  }}
+]
 
 Rules:
 
-- The organization must actually be identifiable from the supplied
-  title or snippet.
-- source_url MUST be one of the URLs above.
-- Do not invent contact names.
-- Do not invent email addresses.
-- Do not invent company attributes.
-- Do not invent transaction volumes.
-- confidence must be 0-100.
-- Prefer banks, PSPs, payment companies and fintechs with evidence
-  related to ISO 20022 or payment modernization.
+- result_index MUST be one of the supplied result IDs.
+- Company must actually appear or be clearly identifiable in that result.
+- Evidence must concern the organization itself.
+- Prefer banks, PSPs, fintechs and financial institutions.
+- Prefer evidence about ISO 20022, payment modernization,
+  payment operations or payment infrastructure.
+- Do not invent names, metrics, transaction volumes or contacts.
+- Do not invent facts not present in the result.
+- Do not select generic articles unless they clearly identify
+  a potential customer organization.
+- Do not select CloudNova.
+- Do not select an organization merely because it sells competing
+  software.
+- confidence must be between 0 and 100.
 """
 
-    raw = ollama(prompt, max_tokens=1000)
+    raw = ollama(prompt, max_tokens=1200)
 
     match = re.search(r"\[[\s\S]*\]", raw)
 
     if not match:
-        print("Research Agent did not return valid JSON.", flush=True)
+        print("Research Agent returned no JSON array.", flush=True)
+        print(f"RAW RESPONSE:\n{raw}", flush=True)
         return []
 
     try:
         leads = json.loads(match.group(0))
     except json.JSONDecodeError:
-        print("Could not parse Research Agent JSON.", flush=True)
+        print("Research Agent JSON parse failed.", flush=True)
+        print(f"RAW RESPONSE:\n{raw}", flush=True)
         return []
-
-    valid_urls = {x["url"] for x in results}
 
     verified = []
 
     for lead in leads:
-        if lead.get("source_url") not in valid_urls:
+        try:
+            idx = int(lead.get("result_index"))
+        except (TypeError, ValueError):
             continue
+
+        if idx < 0 or idx >= len(results):
+            continue
+
+        source = results[idx]
 
         name = str(lead.get("company", "")).strip()
 
@@ -216,7 +254,7 @@ Rules:
         verified.append(
             {
                 "company": name,
-                "source_url": lead["source_url"],
+                "source_url": source["url"],
                 "why_fit": str(lead.get("why_fit", ""))[:700],
                 "target_role": str(
                     lead.get("target_role", "Head of Payments")
@@ -226,7 +264,6 @@ Rules:
         )
 
     return verified
-
 
 def save_new_leads(conn, leads):
     new_leads = []
@@ -368,6 +405,14 @@ For today's run define:
 - qualification criteria
 
 Keep the answer below 250 words.
+
+STRICT RULES:
+- Never invent numerical qualification thresholds.
+- Never invent transaction volumes, revenue or company size.
+- Do not claim PaymentOps guarantees regulatory compliance.
+- Do not claim PaymentOps prevents fraud.
+- Do not describe PaymentOps as production-proven.
+- Use qualitative qualification criteria unless supported by evidence.
 """,
         max_tokens=350,
     )
@@ -428,3 +473,5 @@ Keep the answer below 250 words.
 
 if __name__ == "__main__":
     main()
+
+
