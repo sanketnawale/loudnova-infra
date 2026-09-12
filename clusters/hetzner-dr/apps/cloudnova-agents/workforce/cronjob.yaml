@@ -1,0 +1,74 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cloudnova-workforce
+  namespace: cloudnova-agents
+spec:
+  schedule: "0 8,14,20 * * *"
+  timeZone: "Europe/Rome"
+
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  startingDeadlineSeconds: 1800
+
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800
+
+      template:
+        metadata:
+          labels:
+            app: cloudnova-workforce
+        spec:
+          restartPolicy: Never
+
+          containers:
+            - name: workforce
+              image: python:3.12-slim
+
+              command:
+                - /bin/sh
+                - -c
+
+              args:
+                - |
+                  pip install --no-cache-dir -q -r /app/requirements.txt
+                  exec python -u /app/main.py
+
+              env:
+                - name: OLLAMA_URL
+                  value: "http://ollama:11434/api/generate"
+
+                - name: OLLAMA_MODEL
+                  value: "qwen2.5:3b"
+
+                - name: LEADS_DB
+                  value: "/data/leads.db"
+
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 96Mi
+
+                limits:
+                  cpu: 250m
+                  memory: 256Mi
+
+              volumeMounts:
+                - name: code
+                  mountPath: /app
+                  readOnly: true
+
+                - name: data
+                  mountPath: /data
+
+          volumes:
+            - name: code
+              configMap:
+                name: cloudnova-workforce-code
+
+            - name: data
+              persistentVolumeClaim:
+                claimName: cloudnova-agent-data

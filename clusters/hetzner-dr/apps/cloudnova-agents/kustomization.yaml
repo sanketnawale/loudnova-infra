@@ -10,12 +10,14 @@ resources:
   - ollama-tunnel/proxy-config.yaml
   - ollama-tunnel/deployment.yaml
   - ollama-tunnel/service.yaml
-  - workforce/job.yaml
+  - workforce/data-pvc.yaml
+  - workforce/cronjob.yaml
 
 configMapGenerator:
   - name: cloudnova-workforce-code
     files:
       - main.py=workforce/main.py
+      - requirements.txt=workforce/requirements.txt
 
 generatorOptions:
   disableNameSuffixHash: true
