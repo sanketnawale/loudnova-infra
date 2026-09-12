@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ollama-proxy-config
+  namespace: cloudnova-agents
+data:
+  default.conf: |
+    server {
+        listen 11434;
+
+        location / {
+            proxy_set_header Host 127.0.0.1:11434;
+            proxy_http_version 1.1;
+
+            proxy_connect_timeout 30s;
+            proxy_send_timeout 300s;
+            proxy_read_timeout 300s;
+            send_timeout 300s;
+
+            proxy_pass http://127.0.0.1:11435;
+        }
+    }

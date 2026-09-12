@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: cloudnova-agents-quota
+  namespace: cloudnova-agents
+spec:
+  hard:
+    requests.cpu: "300m"
+    requests.memory: "384Mi"
+    limits.cpu: "500m"
+    limits.memory: "512Mi"
+    pods: "3"

@@ -14,3 +14,4 @@ resources:
   - metabase-stats.yaml
   - mira-metabase.yaml
   - mira-web.yaml
+  - cloudnova-agents.yaml
