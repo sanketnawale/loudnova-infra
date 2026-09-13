@@ -36,7 +36,7 @@ spec:
               protocol: TCP
           env:
             - name: NEXT_PUBLIC_SITE_URL
-              value: https://paymentops.cloudnova.tech
+              value: https://paymentops-hetzner.cloudnova.tech
             - name: NEXT_PUBLIC_APP_URL
               value: https://paymentops-app.cloudnova.tech
           securityContext:

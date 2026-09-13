@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: paymentops-site
+  labels:
+    app.kubernetes.io/part-of: cloudnova-paymentops
+    app.kubernetes.io/component: marketing
+    platform.cloudnova.tech/public-routes: "true"
