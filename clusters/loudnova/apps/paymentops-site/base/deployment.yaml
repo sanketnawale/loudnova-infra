@@ -1,13 +1,15 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: paymentops-api
-  namespace: paymentops
+  name: paymentops-website
+  namespace: paymentops-site
+  labels:
+    app: paymentops-website
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: paymentops-api
+      app: paymentops-website
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -16,47 +18,38 @@ spec:
   template:
     metadata:
       labels:
-        app: paymentops-api
+        app: paymentops-website
     spec:
       automountServiceAccountToken: false
-      # Private GHCR images; credential is a cluster-side secret (not committed to Git).
       imagePullSecrets:
         - name: ghcr-pull
       securityContext:
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: paymentops-api
-          image: ghcr.io/cloodnova/paymentops-api:b04c2f7b72e6b8ab008f8afec74c843b632fc3fd
+        - name: paymentops-website
+          image: ghcr.io/cloodnova/paymentops-website:PLACEHOLDER
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
-              containerPort: 8000
+              containerPort: 3000
               protocol: TCP
-          envFrom:
-            - configMapRef:
-                name: paymentops-config
-            - secretRef:
-                name: paymentops-secrets
+          env:
+            - name: NEXT_PUBLIC_SITE_URL
+              value: https://paymentops.cloudnova.tech
+            - name: NEXT_PUBLIC_APP_URL
+              value: https://app.paymentops.cloudnova.tech
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             runAsNonRoot: true
-            runAsUser: 101
-            runAsGroup: 101
+            runAsUser: 1000
+            runAsGroup: 1000
             capabilities:
               drop: ["ALL"]
-          startupProbe:
-            httpGet:
-              path: /health
-              port: http
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            timeoutSeconds: 3
-            failureThreshold: 12
           readinessProbe:
             httpGet:
-              path: /ready
+              path: /
               port: http
             initialDelaySeconds: 3
             periodSeconds: 10
@@ -64,7 +57,7 @@ spec:
             failureThreshold: 3
           livenessProbe:
             httpGet:
-              path: /health
+              path: /
               port: http
             initialDelaySeconds: 10
             periodSeconds: 30
@@ -72,14 +65,8 @@ spec:
             failureThreshold: 3
           resources:
             requests:
-              cpu: 40m
-              memory: 96Mi
+              cpu: 20m
+              memory: 48Mi
             limits:
-              cpu: 400m
-              memory: 512Mi
-          volumeMounts:
-            - name: tmp
-              mountPath: /tmp
-      volumes:
-        - name: tmp
-          emptyDir: {}
+              cpu: 150m
+              memory: 192Mi

@@ -1,0 +1,17 @@
+# Public marketing route: paymentops.cloudnova.tech -> marketing website.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: paymentops-website
+  namespace: paymentops-site
+spec:
+  parentRefs:
+    - name: public-gateway
+      namespace: gateway-infra
+      sectionName: http
+  hostnames:
+    - paymentops.cloudnova.tech
+  rules:
+    - backendRefs:
+        - name: paymentops-website
+          port: 80

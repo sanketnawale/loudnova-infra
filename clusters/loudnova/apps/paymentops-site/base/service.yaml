@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: paymentops-website
+  namespace: paymentops-site
+  labels:
+    app: paymentops-website
+spec:
+  type: ClusterIP
+  selector:
+    app: paymentops-website
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+      protocol: TCP

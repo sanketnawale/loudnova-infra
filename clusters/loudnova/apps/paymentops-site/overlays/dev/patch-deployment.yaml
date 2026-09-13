@@ -1,0 +1,12 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paymentops-website
+  namespace: paymentops-site
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: paymentops-website
+          image: ghcr.io/cloodnova/paymentops-website:PLACEHOLDER
