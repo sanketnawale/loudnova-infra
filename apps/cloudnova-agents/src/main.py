@@ -2,6 +2,7 @@
 import os
 import re
 import sqlite3
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
@@ -77,8 +78,169 @@ BANNED_ORGANIZATION_NAMES = {
     "example bank",
     "federal reserve financial services",
     "federal reserve bank",
+    "federal reserve",
+    "fedpayments improvement",
+    "fedpaymentsimprovement",
     "gsdcouncil",
+    "gsd council",
 }
+
+
+BANNED_DOMAIN_PATTERNS = {
+    "federalreserve.gov",
+    "frbservices.org",
+    "fedpaymentsimprovement.org",
+    "minneapolisfed.org",
+    "gsdcouncil.org",
+    "gsdso.org",
+}
+
+
+BANNED_TITLE_OR_SNIPPET_PATTERNS = {
+    "federal reserve financial services",
+    "fedpayments improvement",
+    "gsdcouncil",
+    "gsd council",
+}
+
+
+BANNED_DOMAIN_SUFFIXES = (
+    ".gov",
+    ".mil",
+    ".edu",
+)
+
+
+NON_COMMERCIAL_DOMAIN_HINTS = {
+    "centralbank",
+    "central-bank",
+    "bis.org",
+    "ecb.europa.eu",
+    "imf.org",
+    "worldbank.org",
+    "bankofengland.co.uk",
+    "europa.eu",
+    "iso.org",
+    "wikipedia.org",
+}
+
+
+GENERIC_NAME_TOKENS = {
+    "the", "and", "of", "for",
+    "bank", "banking",
+    "financial", "finance",
+    "group", "holdings",
+    "services", "service",
+    "payments", "payment",
+    "international", "global", "national",
+    "corporation", "corp", "company",
+    "limited", "inc", "llc", "plc", "ltd",
+    "ag", "sa", "nv", "se",
+}
+
+
+ACRONYM_STOPWORDS = {
+    "the", "and", "of", "for",
+}
+
+
+def domain_from_url(url):
+    if not url:
+        return ""
+
+    try:
+        host = urllib.parse.urlparse(url).netloc.lower()
+    except ValueError:
+        return ""
+
+    host = host.split("@")[-1].split(":")[0]
+
+    if host.startswith("www."):
+        host = host[4:]
+
+    return host
+
+
+def name_tokens(name):
+    words = re.findall(r"[a-z0-9]+", name.lower())
+
+    return [
+        word
+        for word in words
+        if len(word) >= 3 and word not in GENERIC_NAME_TOKENS
+    ]
+
+
+def name_acronym(name):
+    words = re.findall(r"[a-z]+", name.lower())
+
+    return "".join(
+        word[0]
+        for word in words
+        if word not in ACRONYM_STOPWORDS
+    )
+
+
+def evidence_is_first_party(name, source):
+    url = source.get("url", "") if isinstance(source, dict) else str(source or "")
+    domain = domain_from_url(url)
+    tokens = name_tokens(name)
+    acronym = name_acronym(name)
+
+    if len(acronym) >= 3 and acronym in domain:
+        return True
+
+    for token in tokens:
+        if token in domain:
+            return True
+
+    if not isinstance(source, dict):
+        return False
+
+    title = source.get("title", "").lower()
+
+    if name.lower() in title:
+        return True
+
+    for token in tokens:
+        if len(token) >= 4 and token in title:
+            return True
+
+    return False
+
+
+def is_disallowed_prospect(name, source):
+    name_l = name.lower()
+    url = source.get("url", "") if isinstance(source, dict) else str(source or "")
+    domain = domain_from_url(url)
+
+    for banned in BANNED_ORGANIZATION_NAMES:
+        if banned in name_l:
+            return True, "NON-COMMERCIAL / PUBLIC-SECTOR PROSPECT"
+
+    for pattern in BANNED_DOMAIN_PATTERNS:
+        if pattern in domain:
+            return True, "BANNED DOMAIN"
+
+    if domain.endswith(BANNED_DOMAIN_SUFFIXES):
+        return True, "NON-COMMERCIAL / PUBLIC-SECTOR PROSPECT"
+
+    for hint in NON_COMMERCIAL_DOMAIN_HINTS:
+        if hint in domain:
+            return True, "NON-COMMERCIAL / PUBLIC-SECTOR PROSPECT"
+
+    if isinstance(source, dict):
+        text = (
+            source.get("title", "")
+            + " "
+            + source.get("snippet", "")
+        ).lower()
+
+        for pattern in BANNED_TITLE_OR_SNIPPET_PATTERNS:
+            if pattern in text:
+                return True, "NON-COMMERCIAL / PUBLIC-SECTOR PROSPECT"
+
+    return False, ""
 
 
 def ollama(prompt, max_tokens=500):
@@ -289,20 +451,22 @@ STRICT RULES:
 - Never invent placeholder companies such as "Example Bank".
 - Never manufacture a company name from the topic of an article.
 - Evidence must refer to the organization itself.
-- The organization must be a plausible CUSTOMER of PaymentOps.
+- The organization must be a plausible COMMERCIAL CUSTOMER of PaymentOps.
+- Prefer the organization's OWN website, newsroom, or blog as evidence.
+- A company mentioned only inside another vendor's article is not a lead.
 
 Reject:
 
 - regulators
 - central banks
-- government organizations
+- government agencies
 - public payment infrastructure operators
+- standards bodies
 - media/news websites
 - bloggers
 - consulting companies
 - training companies
 - certification companies
-- standards organizations
 - universities
 - research organizations
 - generic educational websites
@@ -311,13 +475,13 @@ Reject:
 
 Prefer evidence concerning:
 
-- ISO 20022 migration
-- payment modernization
-- payment operations
-- payment infrastructure
-- payment message processing
-- payment data quality
-- payment transformation
+- public ISO 20022 migration initiative
+- payment modernization project
+- ISO 20022 readiness page
+- payment transformation initiative
+- structured payment data initiative
+- payment operations modernization
+- public mention of payment validation or transformation requirements
 
 Do not invent:
 
@@ -407,23 +571,6 @@ weak or invented candidates.
         if not name:
             continue
 
-        org_type = str(
-            lead.get(
-                "organization_type",
-                "",
-            )
-        ).upper().strip()
-
-        if org_type not in ALLOWED_ORGANIZATION_TYPES:
-            print(
-                (
-                    "REJECT INVALID ORGANIZATION TYPE: "
-                    f"{name} ({org_type})"
-                ),
-                flush=True,
-            )
-            continue
-
         source_text = (
             source["title"]
             + " "
@@ -440,11 +587,48 @@ weak or invented candidates.
             )
             continue
 
-        if name.lower() in BANNED_ORGANIZATION_NAMES:
+        disallowed, reason = is_disallowed_prospect(
+            name,
+            source,
+        )
+
+        if disallowed:
             print(
                 (
-                    "REJECT NON-TARGET: "
-                    f"{name}"
+                    f"REJECT {reason}: "
+                    f"{name} -> "
+                    f"{domain_from_url(source['url'])}"
+                ),
+                flush=True,
+            )
+            continue
+
+        if not evidence_is_first_party(
+            name,
+            source,
+        ):
+            print(
+                (
+                    "REJECT THIRD-PARTY MENTION: "
+                    f"{name} -> "
+                    f"{domain_from_url(source['url'])}"
+                ),
+                flush=True,
+            )
+            continue
+
+        org_type = str(
+            lead.get(
+                "organization_type",
+                "",
+            )
+        ).upper().strip()
+
+        if org_type not in ALLOWED_ORGANIZATION_TYPES:
+            print(
+                (
+                    "REJECT NON-TARGET TYPE: "
+                    f"{name} ({org_type})"
                 ),
                 flush=True,
             )
@@ -496,6 +680,38 @@ weak or invented candidates.
         )
 
     return verified
+
+
+def deduplicate_leads(leads):
+    unique = []
+    seen = set()
+
+    for lead in leads:
+        key = company_key(
+            lead.get(
+                "company",
+                "",
+            )
+        )
+
+        if not key:
+            continue
+
+        if key in seen:
+            print(
+                (
+                    "SKIP DUPLICATE CANDIDATE: "
+                    f"{lead.get('company', '')}"
+                ),
+                flush=True,
+            )
+            continue
+
+        seen.add(key)
+
+        unique.append(lead)
+
+    return unique
 
 
 def save_new_leads(
@@ -565,26 +781,20 @@ def save_new_leads(
     return new_leads
 
 
-def create_outreach(leads):
-    if not leads:
-        return (
-            "No new qualified leads. "
-            "No outreach drafts generated."
-        )
-
+def create_outreach_for_lead(lead):
     prompt = f"""
 You are CloudNova's B2B Outreach Draft Agent.
 
 PRODUCT:
 {PRODUCT}
 
-CANDIDATE LEADS REQUIRING HUMAN REVIEW:
+THIS IS EXACTLY ONE COMPANY:
 
-{json.dumps(leads, ensure_ascii=False, indent=2)}
+{json.dumps(lead, ensure_ascii=False, indent=2)}
 
-For each candidate create a short personalized outreach DRAFT.
+Produce exactly ONE outreach draft for this ONE company.
 
-For each draft provide:
+Output exactly these fields, once:
 
 COMPANY:
 TARGET ROLE:
@@ -595,10 +805,13 @@ EMAIL:
 
 STRICT RULES:
 
-- Maximum 120 words per email.
+- Produce exactly ONE draft.
+- Do not repeat the company.
+- Do not output multiple alternatives.
+- Maximum 120 words in the EMAIL.
 - Use only the supplied evidence.
 - Never call CloudNova a leader.
-- Never claim CloudNova has existing bank customers.
+- Never claim CloudNova has existing customers.
 - Never invent contact names.
 - Never invent email addresses.
 - Never invent metrics.
@@ -610,12 +823,51 @@ STRICT RULES:
 - Phrase the message as exploratory business development.
 - End with a request for a short discovery conversation.
 - Do NOT send anything.
-- Every draft requires explicit human approval.
+- This draft requires explicit human approval.
 """
 
     return ollama(
         prompt,
-        max_tokens=1200,
+        max_tokens=700,
+    )
+
+
+def create_outreach(leads):
+    leads = deduplicate_leads(
+        leads
+    )
+
+    if not leads:
+        return (
+            "No new qualified leads. "
+            "No outreach drafts generated."
+        )
+
+    drafts = []
+
+    for lead in leads:
+        print(
+            (
+                "Generating exactly one outreach draft for: "
+                f"{lead['company']}"
+            ),
+            flush=True,
+        )
+
+        drafts.append(
+            create_outreach_for_lead(
+                lead
+            )
+        )
+
+    separator = (
+        "\n\n"
+        + "-" * 72
+        + "\n\n"
+    )
+
+    return separator.join(
+        drafts
     )
 
 
@@ -625,6 +877,7 @@ def operations_review(
 ):
     prompt = f"""
 You are CloudNova's strict Business Development Quality Gate.
+You are the final challenge before human review. Be skeptical.
 
 PRODUCT:
 {PRODUCT}
@@ -637,40 +890,111 @@ OUTREACH DRAFTS:
 
 {outreach}
 
+Independently challenge EVERY lead. Answer each of these questions:
+
+- Is this actually a commercial buyer?
+- Is this a regulator or public body?
+- Is this a vendor or competitor?
+- Is the source first-party (the organization's own site)?
+- Does the evidence actually prove ISO 20022 activity by this organization?
+- Did the outreach imply unsupported problems?
+- Did the outreach imply PaymentOps capabilities beyond the PRODUCT description?
+
 Return:
 
 1. RUN STATUS: PASS or NEEDS REVIEW
 2. Number of candidate leads
-3. Unsupported claims found
-4. Leads requiring human verification
-5. Recommended next action
+3. Per-lead challenge findings
+4. Unsupported claims found
+5. Leads requiring human verification
+6. Recommended next action
 
 STRICT RULES:
 
-- Every lead requires human verification before outreach.
-- Never recommend automatically sending an email.
+- Every lead must remain HUMAN_REVIEW_REQUIRED.
+- Never recommend sending the email.
+- Never say or imply "send the email".
+- The only allowed recommendation is exactly:
+  "Human review required before external outreach."
 - Never say a lead is fully verified merely because a search result exists.
 - Search snippets are research evidence, not definitive proof.
-- Check whether the evidence actually refers to the organization.
-- Check whether the organization is a plausible PaymentOps buyer.
+- Challenge whether the evidence actually refers to the organization.
+- Challenge whether the organization is a plausible commercial PaymentOps buyer.
+- Flag regulators, central banks, government bodies, public infrastructure.
+- Flag vendors and competing payment software.
+- Flag third-party articles and third-party mentions.
 - Flag weak evidence.
 - Flag generic articles.
 - Flag invented companies.
 - Flag invented metrics.
+- Flag unsupported problems such as errors, fraud, compliance issues,
+  high transaction volume, or cost savings.
 - Flag compliance guarantees.
 - Flag fraud-prevention claims.
 - Flag market-leadership claims.
+- Flag production-proven claims.
 - Flag unsupported PaymentOps capabilities.
 - External outreach always requires explicit human approval.
-- The correct next step is normally HUMAN REVIEW of the evidence
-  and outreach draft before any external action.
 
 No email has been sent.
 """
 
     return ollama(
         prompt,
-        max_tokens=600,
+        max_tokens=700,
+    )
+
+
+def print_lead_for_review(lead):
+    print(
+        "\n--- HUMAN REVIEW REQUIRED ---",
+        flush=True,
+    )
+
+    print(
+        f"Company: {lead['company']}",
+        flush=True,
+    )
+
+    print(
+        (
+            "Organization type: "
+            f"{lead['organization_type']}"
+        ),
+        flush=True,
+    )
+
+    print(
+        (
+            "Evidence domain: "
+            f"{domain_from_url(lead['source_url'])}"
+        ),
+        flush=True,
+    )
+
+    print(
+        f"Evidence URL: {lead['source_url']}",
+        flush=True,
+    )
+
+    print(
+        f"Why fit: {lead['why_fit']}",
+        flush=True,
+    )
+
+    print(
+        f"Target role: {lead['target_role']}",
+        flush=True,
+    )
+
+    print(
+        f"Confidence: {lead['confidence']}",
+        flush=True,
+    )
+
+    print(
+        "Status: HUMAN_REVIEW_REQUIRED",
+        flush=True,
     )
 
 
@@ -710,28 +1034,64 @@ You are CloudNova's CEO Strategy Agent.
 
 {PRODUCT}
 
-For today's research run define:
+Produce a short research brief using EXACTLY these four sections:
 
-- target customer profile
-- primary business problem
-- qualitative qualification criteria
-- what evidence the Research Agent should look for
+A. TARGET CUSTOMER CATEGORIES
+B. RESEARCH SIGNALS TO LOOK FOR
+C. HYPOTHESES TO TEST
+D. DISQUALIFICATION SIGNALS
 
-Keep the answer below 250 words.
+A. TARGET CUSTOMER CATEGORIES
+List plausible COMMERCIAL buyer categories only
+(for example banks, payment service providers, fintechs,
+financial institutions, payment operations teams).
+
+B. RESEARCH SIGNALS TO LOOK FOR
+List only observable public signals, for example:
+
+- public ISO 20022 migration initiative
+- payment modernization project
+- ISO 20022 readiness page
+- payment transformation initiative
+- structured payment data initiative
+- payment operations modernization
+- public mention of payment validation or transformation requirements
+
+C. HYPOTHESES TO TEST
+State hypotheses, never facts. For example:
+
+- PaymentOps may be relevant where ISO 20022 validation or repair
+  creates operational work. This must be verified before outreach.
+
+D. DISQUALIFICATION SIGNALS
+List reasons to reject a prospect, for example:
+
+- regulators, central banks, government agencies
+- public payment infrastructure organizations
+- standards bodies
+- universities, training or certification organizations
+- media, news websites, generic blogs
+- consultants
+- competing payment software vendors
+- third-party articles that only mention the organization
+
+Keep the answer below 300 words.
 
 STRICT RULES:
 
-- Never invent numerical qualification thresholds.
-- Never invent transaction volumes.
-- Never invent revenue.
-- Never invent company size.
-- Never invent customer problems.
-- Do not claim PaymentOps guarantees regulatory compliance.
-- Do not claim PaymentOps prevents fraud.
-- Do not describe PaymentOps as production-proven.
-- Use qualitative qualification criteria unless supported by evidence.
+- Do NOT claim the prospect has errors.
+- Do NOT claim the prospect has compliance problems.
+- Do NOT claim the prospect has fraud problems.
+- Do NOT claim high transaction volumes.
+- Do NOT claim cost savings.
+- Do NOT invent numerical thresholds.
+- Do NOT describe unverified customer problems as facts.
+- Do NOT claim PaymentOps guarantees regulatory compliance.
+- Do NOT claim PaymentOps prevents fraud.
+- Do NOT describe PaymentOps as production-proven.
+- Use hypotheses and research signals only.
 """,
-        max_tokens=350,
+        max_tokens=400,
     )
 
     print(
@@ -759,17 +1119,21 @@ STRICT RULES:
         search_results
     )
 
-    new_leads = save_new_leads(
-        conn,
-        verified,
-    )
-
     print(
         (
-            "Candidate organizations passing "
+            "\nCandidate organizations passing "
             f"automated filters: {len(verified)}"
         ),
         flush=True,
+    )
+
+    unique_leads = deduplicate_leads(
+        verified
+    )
+
+    new_leads = save_new_leads(
+        conn,
+        unique_leads,
     )
 
     print(
@@ -781,47 +1145,8 @@ STRICT RULES:
     )
 
     for lead in new_leads:
-        print(
-            "\n--- HUMAN REVIEW REQUIRED ---",
-            flush=True,
-        )
-
-        print(
-            f"Company: {lead['company']}",
-            flush=True,
-        )
-
-        print(
-            (
-                "Organization type: "
-                f"{lead['organization_type']}"
-            ),
-            flush=True,
-        )
-
-        print(
-            f"Evidence: {lead['source_url']}",
-            flush=True,
-        )
-
-        print(
-            f"Why fit: {lead['why_fit']}",
-            flush=True,
-        )
-
-        print(
-            f"Target role: {lead['target_role']}",
-            flush=True,
-        )
-
-        print(
-            f"Confidence: {lead['confidence']}",
-            flush=True,
-        )
-
-        print(
-            "Status: HUMAN_REVIEW_REQUIRED",
-            flush=True,
+        print_lead_for_review(
+            lead
         )
 
     print(
