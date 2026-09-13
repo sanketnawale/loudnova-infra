@@ -15,6 +15,7 @@ spec:
   hostnames:
     - app.paymentops.cloudnova.tech
     - paymentops-dev.cloudnova.tech
+    - paymentops-app.cloudnova.tech
   rules:
     - backendRefs:
         - name: paymentops-web
