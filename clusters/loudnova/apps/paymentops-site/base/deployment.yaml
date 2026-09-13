@@ -28,7 +28,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: paymentops-website
-          image: ghcr.io/cloodnova/paymentops-website:PLACEHOLDER
+          image: ghcr.io/cloodnova/paymentops-website:146ef1928e5947402b2b713d2ccc89cbd5888085
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -38,7 +38,7 @@ spec:
             - name: NEXT_PUBLIC_SITE_URL
               value: https://paymentops.cloudnova.tech
             - name: NEXT_PUBLIC_APP_URL
-              value: https://app.paymentops.cloudnova.tech
+              value: https://paymentops-app.cloudnova.tech
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -47,6 +47,9 @@ spec:
             runAsGroup: 1000
             capabilities:
               drop: ["ALL"]
+          volumeMounts:
+            - name: next-cache
+              mountPath: /app/.next/cache
           readinessProbe:
             httpGet:
               path: /
@@ -70,3 +73,6 @@ spec:
             limits:
               cpu: 150m
               memory: 192Mi
+      volumes:
+        - name: next-cache
+          emptyDir: {}

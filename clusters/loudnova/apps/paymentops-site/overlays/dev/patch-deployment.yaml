@@ -9,4 +9,4 @@ spec:
     spec:
       containers:
         - name: paymentops-website
-          image: ghcr.io/cloodnova/paymentops-website:PLACEHOLDER
+          image: ghcr.io/cloodnova/paymentops-website:146ef1928e5947402b2b713d2ccc89cbd5888085

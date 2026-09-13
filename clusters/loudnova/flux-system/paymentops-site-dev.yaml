@@ -4,9 +4,7 @@ metadata:
   name: paymentops-site-dev
   namespace: flux-system
 spec:
-  # Suspended until the marketing website image is published (repo: Cloodnova/PaymentOps_Website).
-  # Remove `suspend` once the image tag in overlays/dev/patch-deployment.yaml is a real SHA.
-  suspend: true
+  # Image published from Cloodnova/PaymentOps_Website (pinned by SHA in overlays/dev).
   interval: 5m
   path: ./clusters/loudnova/apps/paymentops-site/overlays/dev
   prune: true
