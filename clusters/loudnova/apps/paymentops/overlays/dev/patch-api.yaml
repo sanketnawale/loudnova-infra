@@ -12,5 +12,5 @@ spec:
     spec:
       containers:
         - name: paymentops-api
-          image: ghcr.io/cloodnova/paymentops-api:ff55c0a746db75c3f67275b1afe5c27b87019a5d
+          image: ghcr.io/cloodnova/paymentops-api:1c1dfd9f165ff35fe8ff22286ec41e6362936da4
 
