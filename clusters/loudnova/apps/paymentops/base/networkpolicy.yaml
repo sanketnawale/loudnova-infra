@@ -1,0 +1,100 @@
+# Namespace baseline: deny all ingress by default, then allow only required flows.
+# Egress is intentionally left unrestricted to avoid breaking DNS and image pulls; the
+# address-structuring service additionally has its own targeted ingress policy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: paymentops-default-deny-ingress
+  namespace: paymentops
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress: []
+---
+# Web console: reachable only from the Envoy Gateway data plane and its own namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: paymentops-web-ingress
+  namespace: paymentops
+spec:
+  podSelector:
+    matchLabels:
+      app: paymentops-web
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: envoy-gateway-system
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 3000
+---
+# API: reachable from the web proxy and worker within the namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: paymentops-api-ingress
+  namespace: paymentops
+spec:
+  podSelector:
+    matchLabels:
+      app: paymentops-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8000
+---
+# PostgreSQL: reachable only from API and worker pods.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: paymentops-postgres-ingress
+  namespace: paymentops
+spec:
+  podSelector:
+    matchLabels:
+      app: paymentops-postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values: ["paymentops-api", "paymentops-worker"]
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# Redis: reachable only from API and worker pods.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: paymentops-redis-ingress
+  namespace: paymentops
+spec:
+  podSelector:
+    matchLabels:
+      app: paymentops-redis
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values: ["paymentops-api", "paymentops-worker"]
+      ports:
+        - protocol: TCP
+          port: 6379

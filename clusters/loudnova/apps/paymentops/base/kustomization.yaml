@@ -18,4 +18,5 @@ resources:
   - address-structuring-deployment.yaml
   - address-structuring-service.yaml
   - address-structuring-networkpolicy.yaml
+  - networkpolicy.yaml
   - address-resources-pvc.yaml
