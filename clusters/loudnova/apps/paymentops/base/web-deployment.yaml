@@ -27,15 +27,31 @@ spec:
           type: RuntimeDefault
       containers:
         - name: paymentops-web
-          image: ghcr.io/cloodnova/paymentops-web:19b362598adc99c3662f51f23aad2ca61e1b3224
+          image: ghcr.io/cloodnova/paymentops-web:fcd639003edba1a66b193beab53590e969f95d7c
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 3000
               protocol: TCP
           env:
+            # Browser-facing base URL: same-origin proxy path (never an internal service URL).
             - name: NEXT_PUBLIC_API_URL
+              value: /api/backend
+            # Server-only: where the Next.js proxy forwards requests (cluster-internal).
+            - name: PAYMENTOPS_INTERNAL_API_URL
               value: http://paymentops-api:8000
+            # Server-only operator credentials, injected by the proxy. Never exposed to the
+            # browser and never placed in a NEXT_PUBLIC_* variable.
+            - name: PAYMENTOPS_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: paymentops-web-operator
+                  key: client-id
+            - name: PAYMENTOPS_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: paymentops-web-operator
+                  key: client-secret
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
