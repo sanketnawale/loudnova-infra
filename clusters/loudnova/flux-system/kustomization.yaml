@@ -8,6 +8,7 @@ resources:
 - flux-web.yaml
 - mira-web.yaml
 - paymentops-dev.yaml
+- paymentops-site-dev.yaml
 
 
 patches:
