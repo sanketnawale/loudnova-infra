@@ -27,7 +27,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: paymentops-worker
-          image: ghcr.io/cloodnova/paymentops-worker:1c1dfd9f165ff35fe8ff22286ec41e6362936da4
+          image: ghcr.io/cloodnova/paymentops-worker:c4e7252161243c2a1087f219a5769241b87b6e9e
           imagePullPolicy: IfNotPresent
           envFrom:
             - configMapRef:
