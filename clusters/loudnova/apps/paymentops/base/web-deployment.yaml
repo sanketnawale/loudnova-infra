@@ -37,9 +37,15 @@ spec:
             # Browser-facing base URL: same-origin proxy path (never an internal service URL).
             - name: NEXT_PUBLIC_API_URL
               value: /api/backend
+            # Public marketing site (for login-page links).
+            - name: NEXT_PUBLIC_MARKETING_URL
+              value: https://paymentops.cloudnova.tech
             # Server-only: where the Next.js proxy forwards requests (cluster-internal).
             - name: PAYMENTOPS_INTERNAL_API_URL
               value: http://paymentops-api:8000
+            # Server-only: the operator tenant. Sessions from any other organization are denied.
+            - name: PAYMENTOPS_OPERATOR_ORG_ID
+              value: 9fa6b8d9-4c0d-4a4e-9a37-7aaec278c7e1
             # Server-only operator credentials, injected by the proxy. Never exposed to the
             # browser and never placed in a NEXT_PUBLIC_* variable.
             - name: PAYMENTOPS_CLIENT_ID

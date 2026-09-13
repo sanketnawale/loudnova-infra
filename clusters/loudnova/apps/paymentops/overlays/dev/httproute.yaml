@@ -1,6 +1,7 @@
-# Public route for the PaymentOps web frontend.
-# NOTE: the hostname paymentops-dev.cloudnova.tech must have DNS (or a Cloudflare tunnel
-# route) pointing at the Envoy gateway for external reachability.
+# Public routes for the PaymentOps web frontend.
+#   - app.paymentops.cloudnova.tech  -> private authenticated application
+#   - paymentops-dev.cloudnova.tech  -> development/testing application (not marketed)
+# NOTE: hostnames must have DNS (or a Cloudflare tunnel route) pointing at the Envoy gateway.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -12,6 +13,7 @@ spec:
       namespace: gateway-infra
       sectionName: http
   hostnames:
+    - app.paymentops.cloudnova.tech
     - paymentops-dev.cloudnova.tech
   rules:
     - backendRefs:
