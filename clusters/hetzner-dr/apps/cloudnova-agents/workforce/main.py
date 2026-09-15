@@ -1,10 +1,13 @@
 ﻿import json
 import os
 import re
+import smtplib
 import sqlite3
+import ssl
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
+from email.message import EmailMessage
 
 from ddgs import DDGS
 
@@ -23,6 +26,66 @@ DB_PATH = os.getenv(
     "LEADS_DB",
     "/data/leads.db",
 )
+
+
+def _env_port(name, default):
+    try:
+        return int(
+            os.getenv(name, str(default))
+        )
+    except (TypeError, ValueError):
+        return default
+
+
+SMTP_HOST = os.getenv(
+    "SMTP_HOST",
+    "cloudnova.tech",
+)
+
+SMTP_PORT = _env_port(
+    "SMTP_PORT",
+    465,
+)
+
+SMTP_USERNAME = os.getenv(
+    "SMTP_USERNAME",
+    "",
+)
+
+SMTP_PASSWORD = os.getenv(
+    "SMTP_PASSWORD",
+    "",
+)
+
+DAILY_REPORT_TO = os.getenv(
+    "DAILY_REPORT_TO",
+    "",
+)
+
+DAILY_REPORT_FROM = os.getenv(
+    "DAILY_REPORT_FROM",
+    "",
+)
+
+
+REJECTION_REASON_KEYS = (
+    "banned_domain",
+    "public_sector",
+    "third_party",
+    "hallucinated_company",
+    "invalid_type",
+    "low_confidence",
+)
+
+
+REJECTION_REASON_LABELS = {
+    "banned_domain": "Banned/non-commercial domain",
+    "public_sector": "Public-sector/non-commercial prospect",
+    "third_party": "Third-party mention",
+    "hallucinated_company": "Hallucinated company",
+    "invalid_type": "Invalid organization type",
+    "low_confidence": "Low confidence",
+}
 
 
 PRODUCT = """
@@ -313,6 +376,43 @@ def company_key(name):
     )
 
 
+def new_rejection_stats():
+    return {
+        reason: 0
+        for reason in REJECTION_REASON_KEYS
+    }
+
+
+def new_rejection_examples():
+    return {
+        reason: []
+        for reason in REJECTION_REASON_KEYS
+    }
+
+
+def record_rejection(
+    rejection_stats,
+    rejection_examples,
+    reason,
+    detail,
+    max_examples=3,
+):
+    if reason not in rejection_stats:
+        return
+
+    rejection_stats[reason] += 1
+
+    bucket = rejection_examples.get(reason)
+
+    if bucket is None or len(bucket) >= max_examples:
+        return
+
+    detail = str(detail or "").strip()
+
+    if detail:
+        bucket.append(detail)
+
+
 def real_web_search():
     all_results = []
     seen_urls = set()
@@ -373,7 +473,11 @@ def real_web_search():
     return all_results[:20]
 
 
-def extract_verified_leads(results):
+def extract_verified_leads(
+    results,
+    rejection_stats,
+    rejection_examples,
+):
     indexed_results = []
 
     for index, item in enumerate(results):
@@ -585,6 +689,12 @@ weak or invented candidates.
                 ),
                 flush=True,
             )
+            record_rejection(
+                rejection_stats,
+                rejection_examples,
+                "hallucinated_company",
+                name,
+            )
             continue
 
         disallowed, reason = is_disallowed_prospect(
@@ -601,6 +711,16 @@ weak or invented candidates.
                 ),
                 flush=True,
             )
+            if reason == "BANNED DOMAIN":
+                rejection_reason = "banned_domain"
+            else:
+                rejection_reason = "public_sector"
+            record_rejection(
+                rejection_stats,
+                rejection_examples,
+                rejection_reason,
+                name,
+            )
             continue
 
         if not evidence_is_first_party(
@@ -614,6 +734,12 @@ weak or invented candidates.
                     f"{domain_from_url(source['url'])}"
                 ),
                 flush=True,
+            )
+            record_rejection(
+                rejection_stats,
+                rejection_examples,
+                "third_party",
+                name,
             )
             continue
 
@@ -631,6 +757,12 @@ weak or invented candidates.
                     f"{name} ({org_type})"
                 ),
                 flush=True,
+            )
+            record_rejection(
+                rejection_stats,
+                rejection_examples,
+                "invalid_type",
+                f"{name} ({org_type})",
             )
             continue
 
@@ -655,6 +787,12 @@ weak or invented candidates.
                     f"{name} ({confidence})"
                 ),
                 flush=True,
+            )
+            record_rejection(
+                rejection_stats,
+                rejection_examples,
+                "low_confidence",
+                f"{name} ({confidence})",
             )
             continue
 
@@ -998,7 +1136,229 @@ def print_lead_for_review(lead):
     )
 
 
-def main():
+def safe_error(message):
+    text = str(message or "").strip()
+
+    if SMTP_PASSWORD:
+        text = text.replace(
+            SMTP_PASSWORD,
+            "[redacted]",
+        )
+
+    text = re.sub(
+        r"\s+",
+        " ",
+        text,
+    )
+
+    if not text:
+        return "unknown error"
+
+    return text[:300]
+
+
+def send_daily_report(subject, body):
+    if not (
+        SMTP_HOST
+        and SMTP_PORT
+        and SMTP_USERNAME
+        and SMTP_PASSWORD
+        and DAILY_REPORT_TO
+        and DAILY_REPORT_FROM
+    ):
+        print(
+            (
+                "DAILY REPORT EMAIL SKIPPED: "
+                "email configuration missing"
+            ),
+            flush=True,
+        )
+        return False
+
+    message = EmailMessage()
+
+    message["Subject"] = subject
+    message["From"] = DAILY_REPORT_FROM
+    message["To"] = DAILY_REPORT_TO
+
+    message.set_content(body)
+
+    context = ssl.create_default_context()
+
+    try:
+        with smtplib.SMTP_SSL(
+            SMTP_HOST,
+            SMTP_PORT,
+            context=context,
+            timeout=30,
+        ) as smtp:
+            smtp.login(
+                SMTP_USERNAME,
+                SMTP_PASSWORD,
+            )
+            smtp.send_message(message)
+
+    except Exception as exc:
+        print(
+            "DAILY REPORT EMAIL FAILED: "
+            + safe_error(str(exc)),
+            flush=True,
+        )
+        return False
+
+    print(
+        "DAILY REPORT EMAIL SENT",
+        flush=True,
+    )
+
+    return True
+
+
+def format_lead_report(lead):
+    lines = [
+        f"Company: {lead['company']}",
+        (
+            "Organization type: "
+            f"{lead['organization_type']}"
+        ),
+        (
+            "Evidence domain: "
+            f"{domain_from_url(lead['source_url'])}"
+        ),
+        f"Evidence URL: {lead['source_url']}",
+        f"Why fit: {lead['why_fit']}",
+        f"Target role: {lead['target_role']}",
+        f"Confidence: {lead['confidence']}",
+        "Status: HUMAN_REVIEW_REQUIRED",
+    ]
+
+    return "\n".join(lines)
+
+
+def build_rejection_summary(
+    rejection_stats,
+    rejection_examples,
+):
+    lines = ["REJECTED PROSPECT SUMMARY"]
+
+    for reason in REJECTION_REASON_KEYS:
+        lines.append(
+            f"- {REJECTION_REASON_LABELS[reason]}: "
+            f"{rejection_stats.get(reason, 0)}"
+        )
+
+    examples = []
+
+    for reason in REJECTION_REASON_KEYS:
+        bucket = rejection_examples.get(reason) or []
+
+        if not bucket:
+            continue
+
+        examples.append(
+            f"- {REJECTION_REASON_LABELS[reason]}: "
+            + ", ".join(bucket[:3])
+        )
+
+    if examples:
+        lines.append("Examples:")
+        lines.extend(examples)
+
+    return "\n".join(lines)
+
+
+def build_daily_report(
+    run_status,
+    search_results,
+    verified,
+    new_leads,
+    total,
+    review_count,
+    rejection_stats,
+    rejection_examples,
+    outreach,
+    review,
+):
+    lines = [
+        "CloudNova Daily Business Workforce Report",
+        "",
+        (
+            "Date: "
+            + datetime.now(
+                timezone.utc
+            ).date().isoformat()
+        ),
+        f"Run status: {run_status}",
+        "",
+        "SEARCH SUMMARY",
+        (
+            "- Real search results collected: "
+            f"{len(search_results)}"
+        ),
+        (
+            "- Candidate organizations passing filters: "
+            f"{len(verified)}"
+        ),
+        (
+            "- New leads after deduplication: "
+            f"{len(new_leads)}"
+        ),
+        f"- Total leads currently in memory: {total}",
+        f"- Leads waiting for human review: {review_count}",
+        "",
+        "NEW QUALIFIED LEADS",
+    ]
+
+    if new_leads:
+        for lead in new_leads:
+            lines.append("")
+            lines.append(
+                format_lead_report(lead)
+            )
+    else:
+        lines.append(
+            "No new qualified commercial prospects "
+            "were found in this run."
+        )
+
+    lines.append("")
+    lines.append(
+        build_rejection_summary(
+            rejection_stats,
+            rejection_examples,
+        )
+    )
+
+    lines.append("")
+    lines.append("OUTREACH DRAFTS")
+    lines.append(
+        outreach
+        or "No outreach drafts generated."
+    )
+
+    lines.append("")
+    lines.append("OPERATIONS REVIEW")
+    lines.append(
+        review
+        or "No operations review available."
+    )
+
+    lines.append("")
+    lines.append("FINAL SAFETY NOTE")
+    lines.append(
+        "NO EXTERNAL PROSPECT EMAILS WERE SENT."
+    )
+    lines.append(
+        "ALL PROSPECT OUTREACH REQUIRES HUMAN APPROVAL."
+    )
+
+    return "\n".join(lines)
+
+
+def run_workforce(
+    rejection_stats,
+    rejection_examples,
+):
     print(
         "=" * 72,
         flush=True,
@@ -1116,7 +1476,9 @@ STRICT RULES:
     )
 
     verified = extract_verified_leads(
-        search_results
+        search_results,
+        rejection_stats,
+        rejection_examples,
     )
 
     print(
@@ -1212,7 +1574,7 @@ STRICT RULES:
     )
 
     print(
-        "NO EMAILS WERE SENT",
+        "NO PROSPECT EMAILS WERE SENT",
         flush=True,
     )
 
@@ -1227,6 +1589,84 @@ STRICT RULES:
     )
 
     conn.close()
+
+    return {
+        "search_results": search_results,
+        "verified": verified,
+        "new_leads": new_leads,
+        "outreach": outreach,
+        "review": review,
+        "total": total,
+        "review_count": review_count,
+    }
+
+
+def main():
+    rejection_stats = new_rejection_stats()
+    rejection_examples = new_rejection_examples()
+
+    run_status = "NO_NEW_LEADS"
+
+    data = {
+        "search_results": [],
+        "verified": [],
+        "new_leads": [],
+        "outreach": "",
+        "review": "",
+        "total": 0,
+        "review_count": 0,
+    }
+
+    try:
+        data = run_workforce(
+            rejection_stats,
+            rejection_examples,
+        )
+
+        if data["new_leads"]:
+            run_status = "HUMAN_REVIEW_REQUIRED"
+        else:
+            run_status = "NO_NEW_LEADS"
+
+    except Exception as exc:
+        run_status = "ERROR"
+        print(
+            (
+                "WORKFORCE RUN FAILED: "
+                + safe_error(str(exc))
+            ),
+            flush=True,
+        )
+
+    print(
+        f"\nRUN STATUS: {run_status}",
+        flush=True,
+    )
+
+    report_subject = (
+        "CloudNova Daily Business Workforce Report - "
+        + datetime.now(
+            timezone.utc
+        ).date().isoformat()
+    )
+
+    report_body = build_daily_report(
+        run_status,
+        data["search_results"],
+        data["verified"],
+        data["new_leads"],
+        data["total"],
+        data["review_count"],
+        rejection_stats,
+        rejection_examples,
+        data["outreach"],
+        data["review"],
+    )
+
+    send_daily_report(
+        report_subject,
+        report_body,
+    )
 
 
 if __name__ == "__main__":

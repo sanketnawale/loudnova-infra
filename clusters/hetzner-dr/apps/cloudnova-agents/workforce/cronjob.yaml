@@ -4,7 +4,7 @@ metadata:
   name: cloudnova-workforce
   namespace: cloudnova-agents
 spec:
-  schedule: "0 8,14,20 * * *"
+  schedule: "30 7 * * *"
   timeZone: "Europe/Rome"
 
   concurrencyPolicy: Forbid
@@ -46,6 +46,11 @@ spec:
 
                 - name: LEADS_DB
                   value: "/data/leads.db"
+
+              envFrom:
+                - secretRef:
+                    name: cloudnova-agent-email
+                    optional: true
 
               resources:
                 requests:
