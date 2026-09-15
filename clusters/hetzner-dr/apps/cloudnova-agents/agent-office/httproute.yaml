@@ -1,0 +1,15 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: cloudnova-agent-office
+  namespace: cloudnova-agents
+spec:
+  parentRefs:
+    - name: public-gateway
+      namespace: gateway-infra
+  hostnames:
+    - agents.cloudnova.tech
+  rules:
+    - backendRefs:
+        - name: cloudnova-agent-office
+          port: 4520
