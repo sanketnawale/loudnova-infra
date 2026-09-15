@@ -25,9 +25,9 @@ Autonomous business-development workforce for CloudNova PaymentOps.
 - **No prospect/candidate emails are ever sent automatically.**
 - All prospect outreach is **DRAFT ONLY** and remains
   `HUMAN_REVIEW_REQUIRED` until a human approves it.
-- The report is sent at the very end of the run over **SMTP over SSL**
-  (`smtplib.SMTP_SSL`) using the Python standard library. There is exactly one
-  SMTP send action per run.
+- The report is sent at the very end of the run over **SMTP submission with
+  STARTTLS** (`smtplib.SMTP` + `starttls`, port 587) using the Python standard
+  library. There is exactly one SMTP send action per run.
 - If email configuration is missing or sending fails, the workforce does not
   crash; it logs `DAILY REPORT EMAIL SKIPPED` / `DAILY REPORT EMAIL FAILED`
   and a successful research run keeps its status.
@@ -58,8 +58,8 @@ Secret exists. **Never commit real secret values to Git.**
 SMTP defaults (used when the Secret does not override them):
 
 ```text
-SMTP_HOST   # default: cloudnova.tech
-SMTP_PORT   # default: 465 (SMTP over SSL)
+SMTP_HOST   # default: server376.web-hosting.com
+SMTP_PORT   # default: 587 (SMTP submission with STARTTLS)
 ```
 
 ## Run status

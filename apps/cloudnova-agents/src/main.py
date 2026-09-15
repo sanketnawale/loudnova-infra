@@ -39,12 +39,12 @@ def _env_port(name, default):
 
 SMTP_HOST = os.getenv(
     "SMTP_HOST",
-    "cloudnova.tech",
+    "server376.web-hosting.com",
 )
 
 SMTP_PORT = _env_port(
     "SMTP_PORT",
-    465,
+    587,
 )
 
 SMTP_USERNAME = os.getenv(
@@ -1186,12 +1186,14 @@ def send_daily_report(subject, body):
     context = ssl.create_default_context()
 
     try:
-        with smtplib.SMTP_SSL(
+        with smtplib.SMTP(
             SMTP_HOST,
             SMTP_PORT,
-            context=context,
             timeout=30,
         ) as smtp:
+            smtp.ehlo()
+            smtp.starttls(context=context)
+            smtp.ehlo()
             smtp.login(
                 SMTP_USERNAME,
                 SMTP_PASSWORD,
