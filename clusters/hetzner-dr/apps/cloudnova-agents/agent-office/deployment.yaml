@@ -20,6 +20,8 @@ spec:
       labels:
         app: cloudnova-agent-office
     spec:
+      imagePullSecrets:
+        - name: ghcr-pull
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
