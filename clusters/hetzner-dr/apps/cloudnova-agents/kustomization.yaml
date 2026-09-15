@@ -12,6 +12,8 @@ resources:
   - ollama-tunnel/service.yaml
   - workforce/data-pvc.yaml
   - workforce/cronjob.yaml
+  - agent-office/deployment.yaml
+  - agent-office/service.yaml
 
 configMapGenerator:
   - name: cloudnova-workforce-code

@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudnova-agent-office
+  namespace: cloudnova-agents
+  labels:
+    app: cloudnova-agent-office
+spec:
+  replicas: 1
+  # Recreate: the namespace ResourceQuota allows 3 pods total (ollama-tunnel + this office + one
+  # transient workforce Job). Recreate guarantees the old office pod is gone before a new one
+  # starts, so the office can never occupy two pods and block the CronJob's Job pod.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: cloudnova-agent-office
+  template:
+    metadata:
+      labels:
+        app: cloudnova-agent-office
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: agent-office
+          image: ghcr.io/sanketnawale/cloudnova-agent-office:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 4520
+          env:
+            - name: PORT
+              value: "4520"
+            - name: NODE_ENV
+              value: production
+            - name: CLOUDNOVA_STATUS_FILE
+              value: /data/workforce-status.json
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: data
+              mountPath: /data
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+            - name: app-data
+              mountPath: /app/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: cloudnova-agent-data
+            readOnly: true
+        - name: tmp
+          emptyDir: {}
+        - name: app-data
+          emptyDir: {}

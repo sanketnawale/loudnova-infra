@@ -4,9 +4,10 @@ import re
 import smtplib
 import sqlite3
 import ssl
+import tempfile
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from zoneinfo import ZoneInfo
 
@@ -686,6 +687,7 @@ def real_web_search(
     queries,
     max_results_per_query=5,
     max_total=24,
+    on_progress=None,
 ):
     all_results = []
     seen_urls = set()
@@ -716,7 +718,7 @@ def real_web_search(
                 f"Search failed: {exc}",
                 flush=True,
             )
-            continue
+            results = []
 
         for item in results:
             url = item.get(
@@ -747,7 +749,20 @@ def real_web_search(
             )
 
             if len(all_results) >= max_total:
-                return all_results, searches_performed
+                break
+
+        if on_progress is not None:
+            try:
+                on_progress(
+                    searches_performed,
+                    len(queries),
+                    len(all_results),
+                )
+            except Exception:
+                pass
+
+        if len(all_results) >= max_total:
+            break
 
     return all_results, searches_performed
 
@@ -1842,11 +1857,215 @@ def build_daily_report(
     return "\n".join(lines)
 
 
+WORKFORCE_STATUS_PATH = os.getenv(
+    "WORKFORCE_STATUS_FILE",
+    "/data/workforce-status.json",
+)
+
+STATUS_MAX_ACTIVITY = 50
+
+STATUS_AGENT_DEFS = (
+    ("nova", "NOVA", "CEO / Strategy"),
+    ("scout", "SCOUT", "Web Research"),
+    ("verify", "VERIFY", "Lead Verification"),
+    ("atlas", "ATLAS", "Lead Enrichment"),
+    ("piper", "PIPER", "Outreach Draft"),
+    ("sentinel", "SENTINEL", "Operations Review"),
+)
+
+
+def _status_safety():
+    return {
+        "prospectEmailsSent": 0,
+        "humanApprovalRequired": True,
+        "prospectOutreach": "DRAFT_ONLY",
+        "reportRecipient": "operator-only",
+    }
+
+
+def _atomic_write_json(path, payload):
+    directory = os.path.dirname(path) or "."
+
+    os.makedirs(
+        directory,
+        exist_ok=True,
+    )
+
+    fd, temp_path = tempfile.mkstemp(
+        prefix=".workforce-status-",
+        suffix=".tmp",
+        dir=directory,
+    )
+
+    try:
+        with os.fdopen(
+            fd,
+            "w",
+            encoding="utf-8",
+        ) as handle:
+            json.dump(
+                payload,
+                handle,
+                ensure_ascii=False,
+            )
+            handle.flush()
+            os.fsync(handle.fileno())
+
+        os.replace(temp_path, path)
+
+    except Exception:
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+        raise
+
+
+def next_run_iso(now=None):
+    now = now or rome_now()
+    current = now.hour * 60 + now.minute
+    hours = sorted(RESEARCH_MISSIONS)
+
+    for hour in hours:
+        at = hour * 60 + 30
+        if at > current:
+            return (
+                now + timedelta(minutes=at - current)
+            ).isoformat()
+
+    first = hours[0]
+    delta = (24 * 60 - current) + first * 60 + 30
+
+    return (now + timedelta(minutes=delta)).isoformat()
+
+
+class WorkforceStatus:
+    def __init__(self, mission_name, run_time, path=None):
+        self.path = path or WORKFORCE_STATUS_PATH
+        self.run_id = rome_now().strftime("%Y%m%d-%H%M")
+        self.mission = mission_name
+        self.run_time = run_time
+        self.workforce_status = "RUNNING"
+        self.current_agent = None
+        self.metrics = {
+            "searches": 0,
+            "searchesPlanned": 0,
+            "resultsInspected": 0,
+            "candidatesEvaluated": 0,
+            "newLeads": 0,
+            "enrichedLeads": 0,
+            "rejectedCandidates": 0,
+            "reviewRequired": 0,
+        }
+        self.activity = []
+        self.agents = {
+            agent_id: {
+                "id": agent_id,
+                "name": name,
+                "role": role,
+                "state": "IDLE",
+            }
+            for agent_id, name, role in STATUS_AGENT_DEFS
+        }
+
+    def _stamp(self):
+        return rome_now().strftime("%H:%M:%S")
+
+    def log(self, agent_name, message):
+        self.activity.insert(
+            0,
+            {
+                "time": self._stamp(),
+                "agent": agent_name,
+                "message": str(message),
+            },
+        )
+        del self.activity[STATUS_MAX_ACTIVITY:]
+
+    def set_agent(self, agent_id, state, task=None, progress=None):
+        agent = self.agents.get(agent_id)
+
+        if agent is None:
+            return
+
+        agent["state"] = state
+
+        if task is not None:
+            agent["task"] = str(task)
+
+        if progress is not None:
+            agent["progress"] = str(progress)
+
+        if state == "WORKING":
+            self.current_agent = agent_id
+
+    def set_metric(self, key, value):
+        if key not in self.metrics:
+            return
+
+        try:
+            self.metrics[key] = int(value)
+        except (TypeError, ValueError):
+            self.metrics[key] = 0
+
+    def snapshot(self):
+        return {
+            "visualization": True,
+            "company": "CloudNova",
+            "updatedAt": datetime.now(timezone.utc).isoformat(),
+            "workforce": {
+                "status": self.workforce_status,
+                "runId": self.run_id,
+                "runTime": self.run_time,
+                "mission": self.mission,
+                "nextRun": next_run_iso(),
+            },
+            "agents": [
+                dict(self.agents[agent_id])
+                for agent_id, _name, _role in STATUS_AGENT_DEFS
+            ],
+            "metrics": dict(self.metrics),
+            "activity": list(self.activity),
+            "safety": _status_safety(),
+        }
+
+    def write(self):
+        try:
+            _atomic_write_json(
+                self.path,
+                self.snapshot(),
+            )
+        except Exception as exc:
+            print(
+                "WORKFORCE STATUS WRITE FAILED: "
+                + safe_error(str(exc)),
+                flush=True,
+            )
+
+    def complete(self):
+        for agent in self.agents.values():
+            if agent["state"] == "WORKING":
+                agent["state"] = "COMPLETE"
+
+        self.workforce_status = "COMPLETE"
+        self.write()
+
+    def fail(self):
+        current = self.agents.get(self.current_agent)
+
+        if current is not None and current["state"] == "WORKING":
+            current["state"] = "ERROR"
+
+        self.workforce_status = "ERROR"
+        self.write()
+
+
 def run_workforce(
     mission,
     run_time,
     rejection_stats,
     rejection_examples,
+    status,
 ):
     print(
         "=" * 72,
@@ -1874,6 +2093,14 @@ def run_workforce(
     )
 
     conn = init_db()
+
+    status.set_agent(
+        "nova",
+        "WORKING",
+        task="Defining the research mission and target hypothesis",
+    )
+    status.log("NOVA", "Strategy started")
+    status.write()
 
     print(
         "\n[1/5] CEO / STRATEGY AGENT",
@@ -1975,8 +2202,30 @@ STRICT RULES:
 
     queries = queries[:8]
 
+    status.set_agent("nova", "COMPLETE", task="Research strategy prepared")
+    status.log("NOVA", "Strategy completed")
+    status.set_agent(
+        "scout",
+        "WORKING",
+        task="Searching commercial payment organizations",
+    )
+    status.log("SCOUT", "Started web research")
+    status.set_metric("searchesPlanned", len(queries))
+    status.write()
+
+    def _search_progress(done, total, results):
+        status.set_agent(
+            "scout",
+            "WORKING",
+            progress=f"{done} / {total} searches",
+        )
+        status.set_metric("searches", done)
+        status.set_metric("resultsInspected", results)
+        status.write()
+
     search_results, search_count = real_web_search(
-        queries
+        queries,
+        on_progress=_search_progress,
     )
 
     print(
@@ -1988,6 +2237,21 @@ STRICT RULES:
         ),
         flush=True,
     )
+
+    status.set_agent(
+        "scout",
+        "COMPLETE",
+        task=f"{len(search_results)} results inspected",
+    )
+    status.set_metric("searches", search_count)
+    status.set_metric("resultsInspected", len(search_results))
+    status.log("SCOUT", "Research candidates collected")
+    status.set_agent(
+        "verify",
+        "WORKING",
+        task="Verifying organizations and evidence",
+    )
+    status.write()
 
     verified = extract_verified_leads(
         search_results,
@@ -2003,6 +2267,18 @@ STRICT RULES:
         ),
         flush=True,
     )
+
+    status.set_agent(
+        "verify",
+        "WORKING",
+        progress=f"{len(verified)} candidates",
+    )
+    status.set_metric("candidatesEvaluated", len(verified))
+    status.set_metric(
+        "rejectedCandidates",
+        sum(rejection_stats.values()),
+    )
+    status.write()
 
     unique_leads = deduplicate_leads(
         verified
@@ -2023,6 +2299,26 @@ STRICT RULES:
         flush=True,
     )
 
+    status.set_metric("newLeads", len(new_leads))
+    status.set_metric("enrichedLeads", len(enriched_leads))
+    status.set_metric(
+        "rejectedCandidates",
+        sum(rejection_stats.values()),
+    )
+    status.set_agent(
+        "verify",
+        "COMPLETE",
+        task=f"{len(new_leads)} new | {len(enriched_leads)} enriched",
+    )
+    status.log("VERIFY", "Qualification complete")
+    status.set_agent(
+        "atlas",
+        "WORKING",
+        task="Enriching existing prospects with stronger evidence",
+    )
+    status.log("ATLAS", "Enrichment started")
+    status.write()
+
     for lead in new_leads:
         print_lead_for_review(
             lead
@@ -2032,6 +2328,19 @@ STRICT RULES:
         "\n[3/5] OUTREACH DRAFT AGENT",
         flush=True,
     )
+
+    status.set_agent(
+        "atlas",
+        "COMPLETE",
+        task=f"{len(enriched_leads)} existing leads enriched",
+    )
+    status.set_agent(
+        "piper",
+        "WORKING",
+        task="Drafting human-review-required outreach (DRAFT ONLY - not sent)",
+    )
+    status.log("PIPER", "Drafting outreach (DRAFT ONLY - not sent)")
+    status.write()
 
     outreach_targets = new_leads + enriched_leads
 
@@ -2047,6 +2356,20 @@ STRICT RULES:
             ),
             flush=True,
         )
+
+    status.set_agent(
+        "piper",
+        "COMPLETE",
+        task=f"{len(outreach_drafts)} drafts ready - DRAFT ONLY, not sent",
+    )
+    status.log("PIPER", "Outreach drafts ready - DRAFT ONLY, not sent")
+    status.set_agent(
+        "sentinel",
+        "WORKING",
+        task="Challenging qualification and safety guardrails",
+    )
+    status.log("SENTINEL", "Operations review started")
+    status.write()
 
     print(
         "\n[4/5] OPERATIONS / REVIEW AGENT",
@@ -2067,6 +2390,14 @@ STRICT RULES:
         review,
         flush=True,
     )
+
+    status.set_agent(
+        "sentinel",
+        "COMPLETE",
+        task="Run reviewed - human approval required",
+    )
+    status.log("SENTINEL", "Operations review complete")
+    status.write()
 
     print(
         "\n[5/5] PERSIST + SUMMARY",
@@ -2124,6 +2455,13 @@ STRICT RULES:
         "=" * 72,
         flush=True,
     )
+
+    status.set_metric("reviewRequired", review_count)
+    status.log(
+        "NOVA",
+        "Run complete - operator report follows; no prospect emails sent",
+    )
+    status.complete()
 
     conn.close()
 
@@ -2193,6 +2531,10 @@ def main():
     mission = get_research_mission()
     run_time = rome_timestamp()
 
+    status = WorkforceStatus(mission["name"], run_time)
+    status.log("NOVA", "Workforce run started")
+    status.write()
+
     run_status = "NO_NEW_LEADS"
 
     data = {
@@ -2216,6 +2558,7 @@ def main():
             run_time,
             rejection_stats,
             rejection_examples,
+            status,
         )
 
         if data["new_leads"]:
@@ -2227,6 +2570,7 @@ def main():
 
     except Exception as exc:
         run_status = "ERROR"
+        status.fail()
         print(
             (
                 "WORKFORCE RUN FAILED: "

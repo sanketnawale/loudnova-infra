@@ -47,6 +47,9 @@ spec:
                 - name: LEADS_DB
                   value: "/data/leads.db"
 
+                - name: WORKFORCE_STATUS_FILE
+                  value: "/data/workforce-status.json"
+
               envFrom:
                 - secretRef:
                     name: cloudnova-agent-email
