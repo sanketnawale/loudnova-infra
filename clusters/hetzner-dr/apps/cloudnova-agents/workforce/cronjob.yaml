@@ -4,7 +4,7 @@ metadata:
   name: cloudnova-workforce
   namespace: cloudnova-agents
 spec:
-  schedule: "30 7 * * *"
+  schedule: "30 7-19/2 * * *"
   timeZone: "Europe/Rome"
 
   concurrencyPolicy: Forbid

@@ -8,6 +8,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from email.message import EmailMessage
+from zoneinfo import ZoneInfo
 
 from ddgs import DDGS
 
@@ -68,6 +69,27 @@ DAILY_REPORT_FROM = os.getenv(
 )
 
 
+REPORT_TIMEZONE = os.getenv(
+    "REPORT_TIMEZONE",
+    "Europe/Rome",
+)
+
+
+def rome_now():
+    try:
+        return datetime.now(
+            ZoneInfo(REPORT_TIMEZONE)
+        )
+    except Exception:
+        return datetime.now(timezone.utc)
+
+
+def rome_timestamp():
+    return rome_now().strftime(
+        "%Y-%m-%d %H:%M"
+    )
+
+
 REJECTION_REASON_KEYS = (
     "banned_domain",
     "public_sector",
@@ -91,6 +113,14 @@ REJECTION_REASON_LABELS = {
 PRODUCT = """
 CloudNova PaymentOps is an early-stage ISO 20022 payment validation
 and repair platform.
+
+The current implementation is an ISO 20022 pacs.008 vertical slice with
+validation and repair-related functionality. It is not production-proven.
+
+Prefer factual language such as:
+"CloudNova PaymentOps is an early-stage platform exploring ways to
+support ISO 20022 payment validation, analysis and repair workflows."
+Never write "ensuring compliance with regulatory standards".
 
 Current target customers:
 - banks
@@ -120,13 +150,196 @@ Important product positioning:
 """
 
 
-SEARCH_QUERIES = [
-    '"ISO 20022" bank payment modernization',
-    '"ISO 20022" payment service provider',
-    '"ISO 20022" fintech payments',
-    '"ISO 20022" payment operations bank',
-    '"ISO 20022" payment validation financial institution',
-]
+RESEARCH_MISSIONS = {
+    7: {
+        "name": "Banks / ISO 20022",
+        "categories": [
+            "commercial banks",
+            "challenger banks",
+            "transaction banking",
+            "corporate banking",
+        ],
+        "geographies": [],
+        "existing_lead_limit": 0,
+        "queries": [
+            '"ISO 20022" commercial bank migration',
+            '"ISO 20022" transaction banking readiness',
+            '"ISO 20022" corporate banking payments',
+            "challenger bank ISO 20022 payment modernization",
+            "bank payment modernization ISO 20022",
+            '"ISO 20022" readiness page bank',
+        ],
+        "instructions": (
+            "Focus on commercial banks, challenger banks, transaction "
+            "banking and corporate banking teams with first-party "
+            "evidence of ISO 20022 migration or payment modernization."
+        ),
+    },
+    9: {
+        "name": "PSP / Payment Processors",
+        "categories": [
+            "payment service providers",
+            "payment processors",
+            "payment infrastructure companies",
+        ],
+        "geographies": [],
+        "existing_lead_limit": 0,
+        "queries": [
+            '"ISO 20022" payment service provider',
+            '"ISO 20022" payment processor',
+            "payment operations modernization ISO 20022",
+            '"ISO 20022" payment infrastructure company',
+            "payment service provider ISO 20022 readiness",
+            '"ISO 20022" payment processing platform',
+        ],
+        "instructions": (
+            "Focus on payment service providers and processors that are "
+            "potential BUYERS of PaymentOps, not competing payment "
+            "software vendors."
+        ),
+    },
+    11: {
+        "name": "Fintech",
+        "categories": [
+            "commercial fintechs",
+            "B2B payment fintechs",
+            "treasury and payment platforms",
+            "cross-border payment companies",
+        ],
+        "geographies": [],
+        "existing_lead_limit": 0,
+        "queries": [
+            '"ISO 20022" fintech payments',
+            "B2B payment fintech ISO 20022",
+            "cross-border payments ISO 20022 fintech",
+            "treasury payment platform ISO 20022",
+            "fintech payment modernization ISO 20022",
+            '"ISO 20022" payment platform readiness',
+        ],
+        "instructions": (
+            "Focus on commercial fintechs and payment platforms publicly "
+            "discussing ISO 20022, treasury or cross-border payments."
+        ),
+    },
+    13: {
+        "name": "Europe Research",
+        "categories": [
+            "commercial banks",
+            "payment service providers",
+            "fintechs",
+            "financial institutions",
+        ],
+        "geographies": [
+            "Italy",
+            "Germany",
+            "France",
+            "Spain",
+            "Netherlands",
+            "United Kingdom",
+        ],
+        "existing_lead_limit": 0,
+        "queries": [
+            '"ISO 20022" Italy bank payment modernization',
+            '"ISO 20022" Germany payment modernization',
+            '"ISO 20022" France payment service provider',
+            '"ISO 20022" Spain bank payments',
+            '"ISO 20022" Netherlands payments modernization',
+            '"ISO 20022" United Kingdom bank payments',
+        ],
+        "instructions": (
+            "Focus on commercial organizations in Italy, Germany, France, "
+            "Spain, the Netherlands and the UK with first-party payment "
+            "modernization or ISO 20022 evidence."
+        ),
+    },
+    15: {
+        "name": "Middle East Research",
+        "categories": [
+            "commercial banks",
+            "fintechs",
+            "payment service providers",
+        ],
+        "geographies": [
+            "Saudi Arabia",
+            "United Arab Emirates",
+        ],
+        "existing_lead_limit": 0,
+        "queries": [
+            '"ISO 20022" Saudi Arabia bank payments',
+            '"ISO 20022" UAE bank payments',
+            '"ISO 20022" Saudi fintech payments',
+            '"ISO 20022" UAE payment service provider',
+            "payment modernization ISO 20022 Middle East",
+            '"ISO 20022" Gulf payment modernization',
+        ],
+        "instructions": (
+            "Focus on commercial banks, fintechs and PSPs in Saudi Arabia "
+            "and the UAE with first-party ISO 20022 or payment "
+            "modernization evidence."
+        ),
+    },
+    17: {
+        "name": "Deep Verification / Enrichment",
+        "categories": [
+            "existing HUMAN_REVIEW_REQUIRED leads",
+        ],
+        "geographies": [],
+        "existing_lead_limit": 5,
+        "queries": [
+            "ISO 20022 payment modernization official site",
+            "ISO 20022 readiness first-party evidence",
+            "payment operations modernization ISO 20022",
+        ],
+        "instructions": (
+            "Focus primarily on previously discovered leads. Search the "
+            "company's official website, find stronger first-party "
+            "evidence, verify whether it is a potential buyer, identify a "
+            "plausible target department or role and improve why_fit. "
+            "Do NOT invent people or job titles."
+        ),
+    },
+    19: {
+        "name": "Final Discovery + Review",
+        "categories": [
+            "additional commercial prospects",
+            "strongest leads from the day",
+        ],
+        "geographies": [],
+        "existing_lead_limit": 3,
+        "queries": [
+            '"ISO 20022" bank payments modernization',
+            '"ISO 20022" payment service provider modernization',
+            '"ISO 20022" fintech payment platform',
+            "payment operations modernization ISO 20022",
+            '"ISO 20022" payment validation enterprise',
+        ],
+        "instructions": (
+            "Look for additional commercial prospects missed earlier, "
+            "revisit the strongest leads from the day, verify evidence, "
+            "reject weak prospects and improve draft quality. Identify "
+            "leads that deserve human attention."
+        ),
+    },
+}
+
+
+def get_research_mission(now=None):
+    if now is None:
+        now = rome_now()
+
+    hour = now.hour
+    hours = sorted(RESEARCH_MISSIONS)
+
+    selected = hours[0]
+
+    for candidate in hours:
+        if hour >= candidate:
+            selected = candidate
+
+    mission = dict(RESEARCH_MISSIONS[selected])
+    mission["hour"] = hour
+
+    return mission
 
 
 ALLOWED_ORGANIZATION_TYPES = {
@@ -347,6 +560,7 @@ def init_db():
     )
 
     conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
 
     conn.execute(
         """
@@ -359,6 +573,38 @@ def init_db():
             confidence INTEGER,
             first_seen TEXT NOT NULL,
             status TEXT NOT NULL
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS research_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_timestamp TEXT NOT NULL,
+            mission TEXT NOT NULL,
+            search_count INTEGER NOT NULL,
+            results_count INTEGER NOT NULL,
+            qualified_count INTEGER NOT NULL,
+            new_leads_count INTEGER NOT NULL,
+            enriched_count INTEGER NOT NULL,
+            rejected_count INTEGER NOT NULL,
+            run_status TEXT NOT NULL
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS lead_evidence (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_key TEXT NOT NULL,
+            source_url TEXT NOT NULL,
+            source_domain TEXT NOT NULL,
+            evidence_summary TEXT,
+            first_party INTEGER NOT NULL,
+            discovered_at TEXT NOT NULL,
+            UNIQUE (company_key, source_url)
         )
         """
     )
@@ -413,26 +659,56 @@ def record_rejection(
         bucket.append(detail)
 
 
-def real_web_search():
+def existing_lead_queries(conn, limit=5):
+    rows = conn.execute(
+        """
+        SELECT company
+        FROM leads
+        WHERE status = 'HUMAN_REVIEW_REQUIRED'
+        ORDER BY confidence DESC, first_seen ASC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+
+    queries = []
+
+    for row in rows:
+        name = str(row["company"]).strip()
+
+        if name:
+            queries.append(f'"{name}" ISO 20022')
+
+    return queries
+
+
+def real_web_search(
+    queries,
+    max_results_per_query=5,
+    max_total=24,
+):
     all_results = []
     seen_urls = set()
+    searches_performed = 0
 
     ddgs = DDGS(
         timeout=20,
     )
 
-    for query in SEARCH_QUERIES:
+    for query in queries:
         print(
             f"\nWEB SEARCH: {query}",
             flush=True,
         )
+
+        searches_performed += 1
 
         try:
             results = ddgs.text(
                 query,
                 region="wt-wt",
                 safesearch="moderate",
-                max_results=5,
+                max_results=max_results_per_query,
             )
 
         except Exception as exc:
@@ -470,11 +746,15 @@ def real_web_search():
                 }
             )
 
-    return all_results[:20]
+            if len(all_results) >= max_total:
+                return all_results, searches_performed
+
+    return all_results, searches_performed
 
 
 def extract_verified_leads(
     results,
+    mission,
     rejection_stats,
     rejection_examples,
 ):
@@ -517,6 +797,12 @@ You are CloudNova's strict evidence-validation Research Agent.
 PRODUCT:
 {PRODUCT}
 
+RESEARCH MISSION:
+- Name: {mission.get("name", "General Research")}
+- Target categories: {", ".join(mission.get("categories", [])) or "commercial payment organizations"}
+- Geographies: {", ".join(mission.get("geographies", [])) or "worldwide"}
+- Instructions: {mission.get("instructions", "")}
+
 Below are REAL WEB SEARCH RESULTS.
 
 Every result has an integer ID.
@@ -558,6 +844,9 @@ STRICT RULES:
 - The organization must be a plausible COMMERCIAL CUSTOMER of PaymentOps.
 - Prefer the organization's OWN website, newsroom, or blog as evidence.
 - A company mentioned only inside another vendor's article is not a lead.
+- Do NOT treat Swift, ISO organizations, regulators, central banks, or
+  government infrastructure as prospects.
+- Quality matters more than quantity: only return strong candidates.
 
 Reject:
 
@@ -852,30 +1141,165 @@ def deduplicate_leads(leads):
     return unique
 
 
-def save_new_leads(
+def evidence_is_new(conn, key, source_url):
+    row = conn.execute(
+        """
+        SELECT 1
+        FROM lead_evidence
+        WHERE company_key = ?
+          AND source_url = ?
+        """,
+        (key, source_url),
+    ).fetchone()
+
+    return row is None
+
+
+def record_evidence(
+    conn,
+    key,
+    source_url,
+    evidence_summary,
+):
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO lead_evidence (
+            company_key,
+            source_url,
+            source_domain,
+            evidence_summary,
+            first_party,
+            discovered_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            key,
+            source_url,
+            domain_from_url(source_url),
+            str(evidence_summary or "")[:700],
+            1,
+            datetime.now(
+                timezone.utc
+            ).isoformat(),
+        ),
+    )
+
+
+def save_or_enrich_leads(
     conn,
     leads,
 ):
     new_leads = []
+    enriched_leads = []
 
     for lead in leads:
         key = company_key(
             lead["company"]
         )
 
+        if not key:
+            continue
+
+        source_is_new = evidence_is_new(
+            conn,
+            key,
+            lead["source_url"],
+        )
+
         existing = conn.execute(
             """
-            SELECT company
+            SELECT
+                company,
+                source_url,
+                why_fit,
+                target_role,
+                confidence
             FROM leads
             WHERE company_key = ?
             """,
             (key,),
         ).fetchone()
 
-        if existing:
+        if existing is None:
+            conn.execute(
+                """
+                INSERT INTO leads (
+                    company_key,
+                    company,
+                    source_url,
+                    why_fit,
+                    target_role,
+                    confidence,
+                    first_seen,
+                    status
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    key,
+                    lead["company"],
+                    lead["source_url"],
+                    lead["why_fit"],
+                    lead["target_role"],
+                    lead["confidence"],
+                    datetime.now(
+                        timezone.utc
+                    ).isoformat(),
+                    "HUMAN_REVIEW_REQUIRED",
+                ),
+            )
+
+            record_evidence(
+                conn,
+                key,
+                lead["source_url"],
+                lead["why_fit"],
+            )
+
+            new_leads.append(lead)
+            continue
+
+        if not source_is_new:
             print(
                 (
-                    "SKIP DUPLICATE: "
+                    "SKIP DUPLICATE (known evidence): "
+                    f"{lead['company']}"
+                ),
+                flush=True,
+            )
+            continue
+
+        old_confidence = int(
+            existing["confidence"] or 0
+        )
+        new_confidence = int(
+            lead["confidence"]
+        )
+        old_why = existing["why_fit"] or ""
+        new_why = lead["why_fit"] or ""
+        old_role = existing["target_role"] or ""
+        new_role = lead["target_role"] or ""
+
+        changes = []
+
+        if len(new_why) > len(old_why):
+            changes.append("improved why_fit")
+
+        if new_confidence > old_confidence:
+            changes.append(
+                f"confidence {old_confidence} -> {new_confidence}"
+            )
+
+        if new_role and new_role != old_role:
+            changes.append(
+                f"target role -> {new_role}"
+            )
+
+        if not changes:
+            print(
+                (
+                    "NO ENRICHMENT (no stronger evidence): "
                     f"{lead['company']}"
                 ),
                 flush=True,
@@ -884,39 +1308,45 @@ def save_new_leads(
 
         conn.execute(
             """
-            INSERT INTO leads (
-                company_key,
-                company,
-                source_url,
-                why_fit,
-                target_role,
-                confidence,
-                first_seen,
-                status
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            UPDATE leads
+            SET why_fit = ?,
+                target_role = ?,
+                confidence = ?,
+                source_url = ?
+            WHERE company_key = ?
             """,
             (
-                key,
-                lead["company"],
+                new_why or old_why,
+                new_role or old_role,
+                max(old_confidence, new_confidence),
                 lead["source_url"],
-                lead["why_fit"],
-                lead["target_role"],
-                lead["confidence"],
-                datetime.now(
-                    timezone.utc
-                ).isoformat(),
-                "HUMAN_REVIEW_REQUIRED",
+                key,
             ),
         )
 
-        new_leads.append(
-            lead
+        record_evidence(
+            conn,
+            key,
+            lead["source_url"],
+            new_why,
+        )
+
+        enriched = dict(lead)
+        enriched["what_changed"] = "; ".join(changes)
+        enriched_leads.append(enriched)
+
+        print(
+            (
+                "ENRICHED EXISTING LEAD: "
+                f"{lead['company']} "
+                f"({enriched['what_changed']})"
+            ),
+            flush=True,
         )
 
     conn.commit()
 
-    return new_leads
+    return new_leads, enriched_leads
 
 
 def create_outreach_for_lead(lead):
@@ -950,15 +1380,32 @@ STRICT RULES:
 - Use only the supplied evidence.
 - Never call CloudNova a leader.
 - Never claim CloudNova has existing customers.
-- Never invent contact names.
+- Never invent contact names or people.
 - Never invent email addresses.
 - Never invent metrics.
 - Never invent regulatory certifications.
 - Never claim guaranteed compliance.
+- Never claim "ensuring compliance with regulatory standards".
 - Never claim fraud prevention.
 - Never claim PaymentOps is production-proven.
+- Never claim market leadership.
+- Never claim guaranteed cost savings or operational improvements.
 - Never imply the recipient already needs or wants PaymentOps.
+- Do not claim the company has a problem unless first-party evidence proves it.
+- Target roles are role-based only, for example:
+  Head of Payments, Head of Payment Operations,
+  Payments Technology Lead, Transaction Banking Technology Lead.
 - Phrase the message as exploratory business development.
+- Use language such as:
+  "I noticed your public material regarding..."
+  "We are developing..."
+  "We are exploring whether..."
+  "Would you be open to a short discovery conversation?"
+- Do NOT say:
+  "I am confident we can..."
+  "we ensure compliance..."
+  "we prevent fraud..."
+  "we will reduce costs..."
 - End with a request for a short discovery conversation.
 - Do NOT send anything.
 - This draft requires explicit human approval.
@@ -970,20 +1417,17 @@ STRICT RULES:
     )
 
 
-def create_outreach(leads):
+def create_outreach(leads, max_drafts=4):
     leads = deduplicate_leads(
         leads
     )
 
-    if not leads:
-        return (
-            "No new qualified leads. "
-            "No outreach drafts generated."
-        )
-
     drafts = []
 
-    for lead in leads:
+    if not leads:
+        return drafts
+
+    for lead in leads[:max_drafts]:
         print(
             (
                 "Generating exactly one outreach draft for: "
@@ -993,26 +1437,27 @@ def create_outreach(leads):
         )
 
         drafts.append(
-            create_outreach_for_lead(
-                lead
-            )
+            {
+                "company": lead["company"],
+                "draft": create_outreach_for_lead(
+                    lead
+                ),
+            }
         )
 
-    separator = (
-        "\n\n"
-        + "-" * 72
-        + "\n\n"
-    )
-
-    return separator.join(
-        drafts
-    )
+    return drafts
 
 
 def operations_review(
     leads,
     outreach,
 ):
+    if not leads:
+        return (
+            "Candidate leads: 0\n"
+            "No per-lead review required."
+        )
+
     prompt = f"""
 You are CloudNova's strict Business Development Quality Gate.
 You are the final challenge before human review. Be skeptical.
@@ -1027,6 +1472,10 @@ CANDIDATE LEADS:
 OUTREACH DRAFTS:
 
 {outreach}
+
+Evaluate ONLY the candidate leads listed above.
+Do NOT invent leads, do NOT reference "Lead #1" unless it is listed above,
+and do NOT invent unsupported-claims findings.
 
 Independently challenge EVERY lead. Answer each of these questions:
 
@@ -1240,8 +1689,9 @@ def format_lead_report(lead):
 def build_rejection_summary(
     rejection_stats,
     rejection_examples,
+    max_examples=5,
 ):
-    lines = ["REJECTED PROSPECT SUMMARY"]
+    lines = ["REJECTED CANDIDATES"]
 
     for reason in REJECTION_REASON_KEYS:
         lines.append(
@@ -1254,13 +1704,17 @@ def build_rejection_summary(
     for reason in REJECTION_REASON_KEYS:
         bucket = rejection_examples.get(reason) or []
 
-        if not bucket:
-            continue
+        for item in bucket:
+            if len(examples) >= max_examples:
+                break
 
-        examples.append(
-            f"- {REJECTION_REASON_LABELS[reason]}: "
-            + ", ".join(bucket[:3])
-        )
+            examples.append(
+                f"- {REJECTION_REASON_LABELS[reason]}: "
+                f"{item}"
+            )
+
+        if len(examples) >= max_examples:
+            break
 
     if examples:
         lines.append("Examples:")
@@ -1270,43 +1724,31 @@ def build_rejection_summary(
 
 
 def build_daily_report(
+    run_time,
+    mission_name,
     run_status,
-    search_results,
-    verified,
+    search_count,
+    results_count,
+    qualified_count,
     new_leads,
-    total,
-    review_count,
+    enriched_leads,
     rejection_stats,
     rejection_examples,
-    outreach,
+    outreach_drafts,
     review,
+    total,
+    review_count,
 ):
     lines = [
-        "CloudNova Daily Business Workforce Report",
-        "",
-        (
-            "Date: "
-            + datetime.now(
-                timezone.utc
-            ).date().isoformat()
-        ),
-        f"Run status: {run_status}",
+        "CLOUDNOVA BUSINESS WORKFORCE",
+        f"RUN TIME: {run_time} Europe/Rome",
+        f"MISSION: {mission_name}",
+        f"RUN STATUS: {run_status}",
         "",
         "SEARCH SUMMARY",
-        (
-            "- Real search results collected: "
-            f"{len(search_results)}"
-        ),
-        (
-            "- Candidate organizations passing filters: "
-            f"{len(verified)}"
-        ),
-        (
-            "- New leads after deduplication: "
-            f"{len(new_leads)}"
-        ),
-        f"- Total leads currently in memory: {total}",
-        f"- Leads waiting for human review: {review_count}",
+        f"- searches performed: {search_count}",
+        f"- results inspected: {results_count}",
+        f"- candidates evaluated: {qualified_count}",
         "",
         "NEW QUALIFIED LEADS",
     ]
@@ -1324,18 +1766,49 @@ def build_daily_report(
         )
 
     lines.append("")
+    lines.append("ENRICHED EXISTING LEADS")
+
+    if enriched_leads:
+        for lead in enriched_leads:
+            lines.append("")
+            lines.append(
+                f"Company: {lead.get('company', '')}"
+            )
+            lines.append(
+                f"New evidence: {lead.get('why_fit', '')}"
+            )
+            lines.append(
+                f"Source URL: {lead.get('source_url', '')}"
+            )
+            lines.append(
+                "What changed: "
+                + str(lead.get("what_changed", ""))
+            )
+    else:
+        lines.append(
+            "No existing leads were materially enriched "
+            "in this run."
+        )
+
+    lines.append("")
+    lines.append("OUTREACH DRAFTS")
+
+    if outreach_drafts:
+        for item in outreach_drafts:
+            lines.append("")
+            lines.append(
+                f"--- DRAFT: {item['company']} ---"
+            )
+            lines.append(str(item["draft"]))
+    else:
+        lines.append("No outreach drafts generated.")
+
+    lines.append("")
     lines.append(
         build_rejection_summary(
             rejection_stats,
             rejection_examples,
         )
-    )
-
-    lines.append("")
-    lines.append("OUTREACH DRAFTS")
-    lines.append(
-        outreach
-        or "No outreach drafts generated."
     )
 
     lines.append("")
@@ -1346,7 +1819,19 @@ def build_daily_report(
     )
 
     lines.append("")
-    lines.append("FINAL SAFETY NOTE")
+    lines.append("DATABASE SUMMARY")
+    lines.append(f"- total unique leads: {total}")
+    lines.append(
+        "- total HUMAN_REVIEW_REQUIRED: "
+        f"{review_count}"
+    )
+    lines.append(f"- new this run: {len(new_leads)}")
+    lines.append(
+        f"- enriched this run: {len(enriched_leads)}"
+    )
+
+    lines.append("")
+    lines.append("SAFETY")
     lines.append(
         "NO EXTERNAL PROSPECT EMAILS WERE SENT."
     )
@@ -1358,6 +1843,8 @@ def build_daily_report(
 
 
 def run_workforce(
+    mission,
+    run_time,
     rejection_stats,
     rejection_examples,
 ):
@@ -1372,9 +1859,12 @@ def run_workforce(
     )
 
     print(
-        datetime.now(
-            timezone.utc
-        ).isoformat(),
+        f"RUN TIME: {run_time} Europe/Rome",
+        flush=True,
+    )
+
+    print(
+        f"MISSION: {mission['name']}",
         flush=True,
     )
 
@@ -1386,7 +1876,7 @@ def run_workforce(
     conn = init_db()
 
     print(
-        "\n[1/4] CEO / STRATEGY AGENT",
+        "\n[1/5] CEO / STRATEGY AGENT",
         flush=True,
     )
 
@@ -1395,6 +1885,11 @@ def run_workforce(
 You are CloudNova's CEO Strategy Agent.
 
 {PRODUCT}
+
+TODAY'S RESEARCH MISSION:
+- Name: {mission['name']}
+- Target categories: {", ".join(mission.get("categories", [])) or "commercial payment organizations"}
+- Geographies: {", ".join(mission.get("geographies", [])) or "worldwide"}
 
 Produce a short research brief using EXACTLY these four sections:
 
@@ -1437,7 +1932,7 @@ List reasons to reject a prospect, for example:
 - competing payment software vendors
 - third-party articles that only mention the organization
 
-Keep the answer below 300 words.
+Keep the answer below 250 words.
 
 STRICT RULES:
 
@@ -1462,23 +1957,41 @@ STRICT RULES:
     )
 
     print(
-        "\n[2/4] REAL WEB RESEARCH AGENT",
+        "\n[2/5] REAL WEB RESEARCH AGENT",
         flush=True,
     )
 
-    search_results = real_web_search()
+    queries = list(mission.get("queries", []))
+
+    lead_limit = int(
+        mission.get("existing_lead_limit", 0) or 0
+    )
+
+    if lead_limit:
+        queries = queries[: max(0, 8 - lead_limit)]
+        queries.extend(
+            existing_lead_queries(conn, lead_limit)
+        )
+
+    queries = queries[:8]
+
+    search_results, search_count = real_web_search(
+        queries
+    )
 
     print(
         (
             "\nCollected "
             f"{len(search_results)} "
-            "real web results."
+            "real web results from "
+            f"{search_count} searches."
         ),
         flush=True,
     )
 
     verified = extract_verified_leads(
         search_results,
+        mission,
         rejection_stats,
         rejection_examples,
     )
@@ -1495,15 +2008,17 @@ STRICT RULES:
         verified
     )
 
-    new_leads = save_new_leads(
+    new_leads, enriched_leads = save_or_enrich_leads(
         conn,
         unique_leads,
     )
 
     print(
         (
-            "NEW organizations after "
-            f"deduplication: {len(new_leads)}"
+            "NEW leads this run: "
+            f"{len(new_leads)} | "
+            "ENRICHED existing leads: "
+            f"{len(enriched_leads)}"
         ),
         flush=True,
     )
@@ -1514,31 +2029,47 @@ STRICT RULES:
         )
 
     print(
-        "\n[3/4] OUTREACH DRAFT AGENT",
+        "\n[3/5] OUTREACH DRAFT AGENT",
         flush=True,
     )
 
-    outreach = create_outreach(
-        new_leads
+    outreach_targets = new_leads + enriched_leads
+
+    outreach_drafts = create_outreach(
+        outreach_targets
     )
+
+    for item in outreach_drafts:
+        print(
+            (
+                f"\n--- DRAFT: {item['company']} ---\n"
+                + str(item["draft"])
+            ),
+            flush=True,
+        )
 
     print(
-        outreach,
+        "\n[4/5] OPERATIONS / REVIEW AGENT",
         flush=True,
     )
 
-    print(
-        "\n[4/4] OPERATIONS / REVIEW AGENT",
-        flush=True,
+    outreach_text = "\n\n".join(
+        str(item["draft"])
+        for item in outreach_drafts
     )
 
     review = operations_review(
-        new_leads,
-        outreach,
+        outreach_targets,
+        outreach_text,
     )
 
     print(
         review,
+        flush=True,
+    )
+
+    print(
+        "\n[5/5] PERSIST + SUMMARY",
         flush=True,
     )
 
@@ -1556,6 +2087,10 @@ STRICT RULES:
         WHERE status = 'HUMAN_REVIEW_REQUIRED'
         """
     ).fetchone()[0]
+
+    rejected_count = sum(
+        rejection_stats.values()
+    )
 
     print(
         "\n" + "=" * 72,
@@ -1593,27 +2128,83 @@ STRICT RULES:
     conn.close()
 
     return {
-        "search_results": search_results,
-        "verified": verified,
+        "mission_name": mission["name"],
+        "run_time": run_time,
+        "search_count": search_count,
+        "results_count": len(search_results),
+        "qualified_count": len(verified),
         "new_leads": new_leads,
-        "outreach": outreach,
+        "enriched_leads": enriched_leads,
+        "rejected_count": rejected_count,
+        "outreach_drafts": outreach_drafts,
         "review": review,
         "total": total,
         "review_count": review_count,
     }
 
 
+def record_research_run(
+    conn,
+    run_time,
+    mission_name,
+    search_count,
+    results_count,
+    qualified_count,
+    new_leads_count,
+    enriched_count,
+    rejected_count,
+    run_status,
+):
+    conn.execute(
+        """
+        INSERT INTO research_runs (
+            run_timestamp,
+            mission,
+            search_count,
+            results_count,
+            qualified_count,
+            new_leads_count,
+            enriched_count,
+            rejected_count,
+            run_status
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            run_time,
+            mission_name,
+            int(search_count),
+            int(results_count),
+            int(qualified_count),
+            int(new_leads_count),
+            int(enriched_count),
+            int(rejected_count),
+            run_status,
+        ),
+    )
+
+    conn.commit()
+
+
 def main():
     rejection_stats = new_rejection_stats()
     rejection_examples = new_rejection_examples()
 
+    mission = get_research_mission()
+    run_time = rome_timestamp()
+
     run_status = "NO_NEW_LEADS"
 
     data = {
-        "search_results": [],
-        "verified": [],
+        "mission_name": mission["name"],
+        "run_time": run_time,
+        "search_count": 0,
+        "results_count": 0,
+        "qualified_count": 0,
         "new_leads": [],
-        "outreach": "",
+        "enriched_leads": [],
+        "rejected_count": 0,
+        "outreach_drafts": [],
         "review": "",
         "total": 0,
         "review_count": 0,
@@ -1621,12 +2212,16 @@ def main():
 
     try:
         data = run_workforce(
+            mission,
+            run_time,
             rejection_stats,
             rejection_examples,
         )
 
         if data["new_leads"]:
-            run_status = "HUMAN_REVIEW_REQUIRED"
+            run_status = "NEW_LEADS_REVIEW_REQUIRED"
+        elif data["enriched_leads"]:
+            run_status = "LEADS_ENRICHED_REVIEW_REQUIRED"
         else:
             run_status = "NO_NEW_LEADS"
 
@@ -1645,24 +2240,52 @@ def main():
         flush=True,
     )
 
+    try:
+        conn = init_db()
+
+        record_research_run(
+            conn,
+            run_time,
+            data["mission_name"],
+            data["search_count"],
+            data["results_count"],
+            data["qualified_count"],
+            len(data["new_leads"]),
+            len(data["enriched_leads"]),
+            data["rejected_count"],
+            run_status,
+        )
+
+        conn.close()
+
+    except Exception as exc:
+        print(
+            "RESEARCH RUN PERSIST FAILED: "
+            + safe_error(str(exc)),
+            flush=True,
+        )
+
     report_subject = (
-        "CloudNova Daily Business Workforce Report - "
-        + datetime.now(
-            timezone.utc
-        ).date().isoformat()
+        "CloudNova Workforce Report - "
+        f"{data['mission_name']} - "
+        f"{run_time} Europe/Rome"
     )
 
     report_body = build_daily_report(
+        run_time,
+        data["mission_name"],
         run_status,
-        data["search_results"],
-        data["verified"],
+        data["search_count"],
+        data["results_count"],
+        data["qualified_count"],
         data["new_leads"],
-        data["total"],
-        data["review_count"],
+        data["enriched_leads"],
         rejection_stats,
         rejection_examples,
-        data["outreach"],
+        data["outreach_drafts"],
         data["review"],
+        data["total"],
+        data["review_count"],
     )
 
     send_daily_report(
