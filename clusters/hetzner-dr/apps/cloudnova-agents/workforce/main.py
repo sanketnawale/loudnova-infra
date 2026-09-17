@@ -1,7 +1,9 @@
-﻿import json
+import ipaddress
+import json
 import os
 import re
 import smtplib
+import socket
 import sqlite3
 import ssl
 import tempfile
@@ -353,6 +355,7 @@ ALLOWED_ORGANIZATION_TYPES = {
 
 BANNED_ORGANIZATION_NAMES = {
     "example bank",
+    "fakecorp",
     "federal reserve financial services",
     "federal reserve bank",
     "federal reserve",
@@ -360,6 +363,19 @@ BANNED_ORGANIZATION_NAMES = {
     "fedpaymentsimprovement",
     "gsdcouncil",
     "gsd council",
+    "swift",
+    "swift community",
+    "iso",
+    "iso 20022",
+    "iso20022",
+    "bank for international settlements",
+    "european central bank",
+    "european payments council",
+    "world bank",
+    "international monetary fund",
+    "bank of england",
+    "sepa",
+    "european payments initiative",
 }
 
 
@@ -370,6 +386,10 @@ BANNED_DOMAIN_PATTERNS = {
     "minneapolisfed.org",
     "gsdcouncil.org",
     "gsdso.org",
+    "swift.com",
+    "iso.org",
+    "iso20022.org",
+    "six-group.com",
 }
 
 
@@ -383,8 +403,13 @@ BANNED_TITLE_OR_SNIPPET_PATTERNS = {
 
 BANNED_DOMAIN_SUFFIXES = (
     ".gov",
+    ".gov.uk",
     ".mil",
     ".edu",
+    ".edu.au",
+    ".ac.uk",
+    ".ac.jp",
+    ".ac.nz",
 )
 
 
@@ -398,7 +423,11 @@ NON_COMMERCIAL_DOMAIN_HINTS = {
     "bankofengland.co.uk",
     "europa.eu",
     "iso.org",
+    "iso20022.org",
+    "swift.com",
     "wikipedia.org",
+    "university",
+    ".ac.",
 }
 
 
@@ -406,18 +435,42 @@ GENERIC_NAME_TOKENS = {
     "the", "and", "of", "for",
     "bank", "banking",
     "financial", "finance",
-    "group", "holdings",
+    "group", "holding", "holdings",
     "services", "service",
     "payments", "payment",
     "international", "global", "national",
-    "corporation", "corp", "company",
+    "corporation", "corp", "company", "co",
     "limited", "inc", "llc", "plc", "ltd",
+    "technology", "technologies", "tech",
+    "systems", "system",
     "ag", "sa", "nv", "se",
 }
 
 
 ACRONYM_STOPWORDS = {
     "the", "and", "of", "for",
+}
+
+
+MULTI_PART_TLDS = {
+    "co.uk", "org.uk", "gov.uk", "ac.uk", "me.uk", "ltd.uk", "plc.uk",
+    "co.nz", "org.nz", "net.nz", "govt.nz", "ac.nz",
+    "com.au", "net.au", "org.au", "edu.au", "gov.au",
+    "co.jp", "or.jp", "ne.jp", "ac.jp",
+    "com.br", "com.cn", "com.hk", "com.sg", "com.my", "com.tr",
+    "com.mx", "com.ar", "com.co", "com.pe", "com.tw", "com.ph",
+    "co.in", "co.kr", "co.za", "co.il", "co.id", "co.th",
+    "com.sa", "com.ae", "com.qa", "com.kw", "com.eg",
+    "co.at", "or.at", "com.pl", "com.es", "com.it", "com.pt",
+    "com.ua", "com.ru", "co.ma", "com.ng", "com.pk", "com.bd",
+}
+
+
+LEGAL_SUFFIXES = {
+    "inc", "incorporated", "llc", "llp", "lp", "plc", "ltd", "limited",
+    "corp", "corporation", "co", "company", "gmbh", "ag", "sa", "sarl",
+    "nv", "bv", "se", "ab", "oy", "oyj", "as", "asa", "aps", "spa",
+    "pte", "pty", "srl", "kk", "kg", "ug", "sca", "snc", "sas",
 }
 
 
@@ -438,62 +491,165 @@ def domain_from_url(url):
     return host
 
 
-def name_tokens(name):
-    words = re.findall(r"[a-z0-9]+", name.lower())
+def registrable_domain(host):
+    host = (host or "").lower().strip(".")
 
+    if not host:
+        return ""
+
+    parts = host.split(".")
+
+    if len(parts) <= 2:
+        return host
+
+    last_two = ".".join(parts[-2:])
+
+    if last_two in MULTI_PART_TLDS and len(parts) >= 3:
+        return ".".join(parts[-3:])
+
+    return last_two
+
+
+def normalize_alnum(value):
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+
+def name_words(name):
+    return re.findall(r"[a-z0-9]+", str(name or "").lower())
+
+
+def name_tokens(name):
     return [
         word
-        for word in words
-        if len(word) >= 3 and word not in GENERIC_NAME_TOKENS
+        for word in name_words(name)
+        if len(word) >= 3
+        and word not in GENERIC_NAME_TOKENS
+        and word not in LEGAL_SUFFIXES
     ]
 
 
 def name_acronym(name):
-    words = re.findall(r"[a-z]+", name.lower())
-
     return "".join(
         word[0]
-        for word in words
+        for word in name_words(name)
         if word not in ACRONYM_STOPWORDS
     )
 
 
-def evidence_is_first_party(name, source):
-    url = source.get("url", "") if isinstance(source, dict) else str(source or "")
-    domain = domain_from_url(url)
-    tokens = name_tokens(name)
-    acronym = name_acronym(name)
+def name_variants(name):
+    words = name_words(name)
+    non_stop = [w for w in words if w not in ACRONYM_STOPWORDS]
+    significant = name_tokens(name)
 
-    if len(acronym) >= 3 and acronym in domain:
-        return True
+    variants = {
+        normalize_alnum(name),
+        "".join(non_stop),
+        "".join(significant),
+    }
 
-    for token in tokens:
-        if token in domain:
-            return True
+    return {v for v in variants if len(v) >= 3}
 
-    if not isinstance(source, dict):
+
+def company_domain_match(name, url):
+    host = domain_from_url(url)
+
+    if not host:
         return False
 
-    title = source.get("title", "").lower()
+    root = registrable_domain(host)
+    root_label = root.split(".")[0] if root else ""
+    root_alnum = normalize_alnum(root_label)
+    normalized = normalize_alnum(name)
+    distinctive = name_tokens(name)
+    acronym = name_acronym(name)
 
-    if name.lower() in title:
+    # 1) strong normalized full-name match (the whole name equals the domain label)
+    if len(normalized) >= 4 and normalized == root_alnum:
         return True
 
-    for token in tokens:
-        if len(token) >= 4 and token in title:
+    # 2) strong full-name / concatenated distinctive-token match.
+    #    Generic business words are excluded by name_tokens, so generic tokens alone
+    #    can never establish a first-party match here.
+    if distinctive:
+        concatenated = "".join(distinctive)
+
+        if len(concatenated) >= 4 and concatenated in host:
+            return True
+
+        for token in distinctive:
+            if len(token) >= 3 and token in host:
+                return True
+
+    # 3) acronym match, or a justified acronym / domain-prefix relationship
+    if len(acronym) >= 3:
+        if acronym in host:
+            return True
+
+        if root_label and (
+            root_label.startswith(acronym)
+            or acronym.startswith(root_label)
+        ):
             return True
 
     return False
 
 
+def name_appears_in_text(name, text):
+    hay = normalize_alnum(text)
+
+    if not hay:
+        return False
+
+    normalized = normalize_alnum(name)
+
+    if normalized and normalized in hay:
+        return True
+
+    tokens = name_tokens(name)
+    acronym = name_acronym(name)
+
+    if len(acronym) >= 3 and acronym in hay:
+        return True
+
+    if not tokens:
+        return False
+
+    present = sum(1 for token in tokens if token in hay)
+
+    if present == len(tokens):
+        return True
+
+    if present >= 1 and len(tokens) == 1:
+        return True
+
+    if present >= max(1, (len(tokens) + 1) // 2):
+        return True
+
+    return False
+
+
+def name_matches_banned(name):
+    words = " " + " ".join(name_words(name)) + " "
+
+    for banned in BANNED_ORGANIZATION_NAMES:
+        if " " + banned + " " in words:
+            return True
+
+    return False
+
+
+def evidence_is_first_party(name, source):
+    url = source.get("url", "") if isinstance(source, dict) else str(source or "")
+
+    return company_domain_match(name, url)
+
+
 def is_disallowed_prospect(name, source):
-    name_l = name.lower()
     url = source.get("url", "") if isinstance(source, dict) else str(source or "")
     domain = domain_from_url(url)
 
-    for banned in BANNED_ORGANIZATION_NAMES:
-        if banned in name_l:
-            return True, "NON-COMMERCIAL / PUBLIC-SECTOR PROSPECT"
+    if name_matches_banned(name):
+        return True, "NON-COMMERCIAL / PUBLIC-SECTOR PROSPECT"
 
     for pattern in BANNED_DOMAIN_PATTERNS:
         if pattern in domain:
@@ -610,6 +766,89 @@ def init_db():
         """
     )
 
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS lead_contacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_key TEXT NOT NULL,
+            contact_name TEXT,
+            contact_role TEXT,
+            contact_email TEXT,
+            contact_url TEXT,
+            contact_type TEXT,
+            source_url TEXT,
+            confidence TEXT,
+            verified_at TEXT,
+            first_party INTEGER NOT NULL
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_lead_contacts_email
+        ON lead_contacts (company_key, contact_email)
+        WHERE contact_email IS NOT NULL
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_lead_contacts_url
+        ON lead_contacts (company_key, contact_url)
+        WHERE contact_url IS NOT NULL
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS search_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            mission TEXT NOT NULL,
+            query TEXT NOT NULL,
+            normalized_query TEXT NOT NULL,
+            results_count INTEGER NOT NULL
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_search_history_normalized
+        ON search_history (normalized_query)
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS research_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL,
+            run_timestamp TEXT NOT NULL,
+            mission TEXT NOT NULL,
+            query TEXT,
+            result_index INTEGER,
+            title TEXT,
+            url TEXT,
+            domain TEXT,
+            snippet TEXT,
+            decision TEXT,
+            decision_reason TEXT,
+            company_key TEXT,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_research_results_run
+        ON research_results (run_id)
+        """
+    )
+
     conn.commit()
 
     return conn
@@ -660,16 +899,49 @@ def record_rejection(
         bucket.append(detail)
 
 
+def revalidate_lead(company, source_url, organization_type=None):
+    """Re-check a persisted lead against the CURRENT rules.
+
+    Used before any EXISTING lead is selected for follow-up research, contact
+    discovery, enrichment or outreach. Historical rows are never deleted; a lead
+    that no longer qualifies is skipped and reported as LEGACY_REJECTED.
+    """
+    source = {
+        "url": source_url or "",
+        "title": company or "",
+        "snippet": "",
+    }
+
+    if name_matches_banned(company):
+        return False, "legacy_banned_organization"
+
+    disallowed, reason = is_disallowed_prospect(company, source)
+
+    if disallowed:
+        return False, "legacy_" + re.sub(
+            r"[^a-z0-9]+",
+            "_",
+            reason.lower(),
+        ).strip("_")
+
+    if not company_domain_match(company, source_url):
+        return False, "legacy_not_first_party"
+
+    if organization_type:
+        if str(organization_type).upper() not in ALLOWED_ORGANIZATION_TYPES:
+            return False, "legacy_invalid_type"
+
+    return True, "ok"
+
+
 def existing_lead_queries(conn, limit=5):
     rows = conn.execute(
         """
-        SELECT company
+        SELECT company, source_url
         FROM leads
         WHERE status = 'HUMAN_REVIEW_REQUIRED'
         ORDER BY confidence DESC, first_seen ASC
-        LIMIT ?
-        """,
-        (limit,),
+        """
     ).fetchall()
 
     queries = []
@@ -677,8 +949,16 @@ def existing_lead_queries(conn, limit=5):
     for row in rows:
         name = str(row["company"]).strip()
 
-        if name:
-            queries.append(f'"{name}" ISO 20022')
+        if not name:
+            continue
+
+        if not revalidate_lead(name, row["source_url"])[0]:
+            continue
+
+        queries.append(f'"{name}" ISO 20022')
+
+        if len(queries) >= limit:
+            break
 
     return queries
 
@@ -736,6 +1016,7 @@ def real_web_search(
 
             all_results.append(
                 {
+                    "query": query,
                     "title": item.get(
                         "title",
                         "",
@@ -768,6 +1049,9 @@ def real_web_search(
 
 
 def extract_verified_leads(
+    conn,
+    run_id,
+    run_time,
     results,
     mission,
     rejection_stats,
@@ -949,6 +1233,7 @@ weak or invented candidates.
         return []
 
     verified = []
+    decisions = {}
 
     for lead in leads:
         try:
@@ -985,7 +1270,7 @@ weak or invented candidates.
             + source["snippet"]
         ).lower()
 
-        if name.lower() not in source_text:
+        if not name_appears_in_text(name, source_text) and not company_domain_match(name, source["url"]):
             print(
                 (
                     "REJECT HALLUCINATED COMPANY: "
@@ -993,6 +1278,7 @@ weak or invented candidates.
                 ),
                 flush=True,
             )
+            decisions[idx] = ("REJECTED", "hallucinated_company", None)
             record_rejection(
                 rejection_stats,
                 rejection_examples,
@@ -1019,6 +1305,7 @@ weak or invented candidates.
                 rejection_reason = "banned_domain"
             else:
                 rejection_reason = "public_sector"
+            decisions[idx] = ("REJECTED", rejection_reason, None)
             record_rejection(
                 rejection_stats,
                 rejection_examples,
@@ -1045,6 +1332,7 @@ weak or invented candidates.
                 "third_party",
                 name,
             )
+            decisions[idx] = ("REJECTED", "third_party", None)
             continue
 
         org_type = str(
@@ -1068,6 +1356,7 @@ weak or invented candidates.
                 "invalid_type",
                 f"{name} ({org_type})",
             )
+            decisions[idx] = ("REJECTED", "invalid_type", None)
             continue
 
         try:
@@ -1098,6 +1387,7 @@ weak or invented candidates.
                 "low_confidence",
                 f"{name} ({confidence})",
             )
+            decisions[idx] = ("REJECTED", "low_confidence", None)
             continue
 
         verified.append(
@@ -1120,6 +1410,37 @@ weak or invented candidates.
                 "confidence": confidence,
             }
         )
+
+        decisions[idx] = (
+            "QUALIFIED",
+            "qualified",
+            company_key(name),
+        )
+
+    for index, item in enumerate(results):
+        decision, reason, key = decisions.get(
+            index,
+            ("INSPECTED", "", None),
+        )
+
+        try:
+            record_research_result(
+                conn,
+                run_id,
+                run_time,
+                mission.get("name", ""),
+                {"id": index, **item},
+                decision,
+                reason,
+                key,
+            )
+        except Exception:
+            pass
+
+    try:
+        conn.commit()
+    except Exception:
+        pass
 
     return verified
 
@@ -1207,6 +1528,7 @@ def save_or_enrich_leads(
 ):
     new_leads = []
     enriched_leads = []
+    legacy_rejected = []
 
     for lead in leads:
         key = company_key(
@@ -1273,6 +1595,28 @@ def save_or_enrich_leads(
             )
 
             new_leads.append(lead)
+            continue
+
+        ok, legacy_reason = revalidate_lead(
+            existing["company"],
+            existing["source_url"],
+        )
+
+        if not ok:
+            legacy_rejected.append(
+                {
+                    "company": existing["company"],
+                    "reason": legacy_reason,
+                    "source_url": existing["source_url"],
+                }
+            )
+            print(
+                (
+                    "LEGACY_REJECTED: "
+                    f"{existing['company']} ({legacy_reason})"
+                ),
+                flush=True,
+            )
             continue
 
         if not source_is_new:
@@ -1361,7 +1705,7 @@ def save_or_enrich_leads(
 
     conn.commit()
 
-    return new_leads, enriched_leads
+    return new_leads, enriched_leads, legacy_rejected
 
 
 def create_outreach_for_lead(lead):
@@ -1381,6 +1725,9 @@ Output exactly these fields, once:
 
 COMPANY:
 TARGET ROLE:
+TARGET PERSON:
+CONTACT METHOD:
+CONTACT SOURCE:
 EVIDENCE USED:
 SOURCE URL:
 SUBJECT:
@@ -1392,7 +1739,13 @@ STRICT RULES:
 - Do not repeat the company.
 - Do not output multiple alternatives.
 - Maximum 120 words in the EMAIL.
-- Use only the supplied evidence.
+- Use only the supplied evidence and supplied contact data.
+- The CONTACT METHOD and CONTACT SOURCE must come only from the supplied
+  contact data; never invent a contact method or source.
+- If the supplied contact email is "NOT PUBLICLY VERIFIED", write exactly
+  that; never guess an address.
+- If the supplied target person is "NOT IDENTIFIED", write exactly that;
+  never invent a person's name.
 - Never call CloudNova a leader.
 - Never claim CloudNova has existing customers.
 - Never invent contact names or people.
@@ -1753,7 +2106,17 @@ def build_daily_report(
     review,
     total,
     review_count,
+    contacts=None,
+    new_companies=None,
+    new_contacts_count=0,
+    new_angles=None,
+    legacy_rejected=None,
 ):
+    contacts = contacts or []
+    new_companies = new_companies or []
+    new_angles = new_angles or []
+    legacy_rejected = legacy_rejected or []
+
     lines = [
         "CLOUDNOVA BUSINESS WORKFORCE",
         f"RUN TIME: {run_time} Europe/Rome",
@@ -1764,9 +2127,13 @@ def build_daily_report(
         f"- searches performed: {search_count}",
         f"- results inspected: {results_count}",
         f"- candidates evaluated: {qualified_count}",
-        "",
-        "NEW QUALIFIED LEADS",
+        f"- new search angles used: {len(new_angles)}",
     ]
+
+    if new_angles:
+        for angle in new_angles[:8]:
+            lines.append(f"  - {angle}")
+
 
     if new_leads:
         for lead in new_leads:
@@ -1781,7 +2148,7 @@ def build_daily_report(
         )
 
     lines.append("")
-    lines.append("ENRICHED EXISTING LEADS")
+    lines.append("EXISTING COMPANIES ENRICHED")
 
     if enriched_leads:
         for lead in enriched_leads:
@@ -1804,6 +2171,58 @@ def build_daily_report(
             "No existing leads were materially enriched "
             "in this run."
         )
+
+    lines.append("")
+    lines.append("NEW COMPANIES DISCOVERED")
+
+    if new_companies:
+        for name in new_companies:
+            lines.append(f"- {name}")
+    else:
+        lines.append("No new companies discovered in this run.")
+
+    lines.append("")
+    lines.append("CONTACTS DISCOVERED")
+
+    if contacts:
+        for contact in contacts:
+            lines.append("")
+            lines.append(str(contact.get("company", "")))
+            lines.append(
+                "Target role: "
+                + str(contact.get("contact_role", ""))
+            )
+            lines.append(
+                "Target person: "
+                + str(contact.get("contact_name", "NOT IDENTIFIED"))
+            )
+            lines.append(
+                "Public professional email: "
+                + str(contact.get("contact_email", "NOT PUBLICLY VERIFIED"))
+            )
+            lines.append(
+                "Alternative contact: "
+                + str(contact.get("contact_url") or "none found")
+            )
+            lines.append(
+                "Source: " + str(contact.get("source_url", ""))
+            )
+            lines.append(
+                "Confidence: " + str(contact.get("confidence", "LOW"))
+            )
+    else:
+        lines.append("No contacts discovered in this run.")
+
+    lines.append("")
+    lines.append("LEGACY LEADS SKIPPED")
+
+    if legacy_rejected:
+        for item in legacy_rejected:
+            lines.append(
+                f"- {item.get('company', '')} ({item.get('reason', '')})"
+            )
+    else:
+        lines.append("No legacy leads required skipping in this run.")
 
     lines.append("")
     lines.append("OUTREACH DRAFTS")
@@ -1843,6 +2262,9 @@ def build_daily_report(
     lines.append(f"- new this run: {len(new_leads)}")
     lines.append(
         f"- enriched this run: {len(enriched_leads)}"
+    )
+    lines.append(
+        f"- new contacts this run: {new_contacts_count}"
     )
 
     lines.append("")
@@ -1956,6 +2378,8 @@ class WorkforceStatus:
             "enrichedLeads": 0,
             "rejectedCandidates": 0,
             "reviewRequired": 0,
+            "newContacts": 0,
+            "newCompanies": 0,
         }
         self.activity = []
         self.agents = {
@@ -2058,6 +2482,843 @@ class WorkforceStatus:
 
         self.workforce_status = "ERROR"
         self.write()
+
+
+TARGET_ROLES = (
+    "Head of Payments",
+    "Head of Payment Operations",
+    "Payments Technology Lead",
+    "Transaction Banking Technology Lead",
+    "ISO 20022 Programme Lead",
+    "Payment Architecture Lead",
+    "Head of Transaction Banking",
+    "Global Payments Lead",
+)
+
+CONTACT_QUERY_TEMPLATES = (
+    '"{company}" payments contact',
+    '"{company}" head of payments',
+    '"{company}" leadership team payments',
+)
+
+EMAIL_RE = re.compile(
+    r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"
+)
+
+PERSONAL_EMAIL_DOMAINS = {
+    "gmail.com", "googlemail.com", "yahoo.com", "yahoo.co.uk",
+    "hotmail.com", "outlook.com", "live.com", "msn.com",
+    "icloud.com", "me.com", "aol.com", "protonmail.com",
+    "proton.me", "gmx.com", "gmx.net", "mail.com",
+    "yandex.com", "qq.com", "163.com", "126.com",
+    "zoho.com", "tutanota.com",
+}
+
+ROLE_MAILBOX_PREFIXES = {
+    "payments", "payment", "iso20022", "iso", "iso-20022",
+    "info", "contact", "enquiries", "enquiry", "inquiries",
+    "inquiry", "sales", "business", "corporate", "treasury",
+    "operations", "op", "compliance", "press", "media",
+    "investor", "investors", "hello", "team", "support",
+    "general", "office",
+}
+
+BAD_EMAIL_SUFFIXES = (
+    ".png", ".jpg", ".jpeg", ".gif", ".webp",
+    ".svg", ".css", ".js", ".ico",
+)
+
+CONTACT_LINK_RE = re.compile(
+    r"(contact|contacts|get-in-touch|enquir|inquir|team|leadership|"
+    r"management|about|press|media|investor)",
+    re.IGNORECASE,
+)
+
+FETCH_USER_AGENT = (
+    "CloudNovaResearchBot/1.0 (+https://cloudnova.tech; read-only research)"
+)
+
+MAX_FETCH_BYTES = 200000
+
+
+def _host_is_public(host):
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except Exception:
+        return False
+
+    if not infos:
+        return False
+
+    for info in infos:
+        addr = info[4][0]
+
+        try:
+            ip = ipaddress.ip_address(addr)
+        except ValueError:
+            return False
+
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
+            return False
+
+    return True
+
+
+def safe_fetch(url, max_bytes=MAX_FETCH_BYTES, timeout=12):
+    try:
+        parsed = urllib.parse.urlparse(str(url or ""))
+    except ValueError:
+        return None
+
+    if parsed.scheme not in ("http", "https"):
+        return None
+
+    host = (parsed.hostname or "").lower()
+
+    if not host or host in ("localhost", "localhost.localdomain"):
+        return None
+
+    try:
+        port = parsed.port
+    except ValueError:
+        return None
+
+    if port is not None and port not in (80, 443):
+        return None
+
+    if not _host_is_public(host):
+        return None
+
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": FETCH_USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml,text/plain",
+        },
+        method="GET",
+    )
+
+    try:
+        with urllib.request.urlopen(
+            request,
+            timeout=timeout,
+        ) as response:
+            content_type = (
+                response.headers.get("Content-Type") or ""
+            ).lower()
+
+            if content_type and not (
+                "text/html" in content_type
+                or "text/plain" in content_type
+                or "application/xhtml" in content_type
+            ):
+                return None
+
+            raw = response.read(max_bytes)
+
+    except Exception:
+        return None
+
+    return raw.decode("utf-8", errors="replace")
+
+
+def html_to_text(html):
+    text = re.sub(r"(?is)<script.*?</script>", " ", html or "")
+    text = re.sub(r"(?is)<style.*?</style>", " ", text)
+    text = re.sub(r"(?s)<[^>]+>", " ", text)
+    text = text.replace("&nbsp;", " ").replace("&amp;", "&")
+    text = re.sub(r"\s+", " ", text)
+
+    return text.strip()
+
+
+def is_role_mailbox(local):
+    local = (local or "").lower()
+
+    return local in ROLE_MAILBOX_PREFIXES or local.startswith(
+        ("payments", "iso", "treasury", "operations", "transaction")
+    )
+
+
+def emails_on_company_domain(text, company_domain):
+    found = []
+
+    for match in EMAIL_RE.findall(text or ""):
+        email = match.strip().strip(".").lower()
+        local, _, host = email.partition("@")
+
+        if not local or not host:
+            continue
+
+        if host.endswith(BAD_EMAIL_SUFFIXES):
+            continue
+
+        if host in PERSONAL_EMAIL_DOMAINS:
+            continue
+
+        if registrable_domain(host) != company_domain:
+            continue
+
+        if email not in found:
+            found.append(email)
+
+    return found
+
+
+def extract_contact_links(html, base_url):
+    links = []
+
+    for href in re.findall(
+        r'href=["\']([^"\']+)["\']',
+        html or "",
+        re.IGNORECASE,
+    ):
+        full = urllib.parse.urljoin(base_url, href)
+
+        if not full.startswith(("http://", "https://")):
+            continue
+
+        if CONTACT_LINK_RE.search(full) and full not in links:
+            links.append(full)
+
+    return links[:8]
+
+
+def choose_target_role(lead, page_text):
+    hay = (page_text or "").lower()
+
+    for role in TARGET_ROLES:
+        if role.lower() in hay:
+            return role
+
+    return lead.get("target_role") or "Head of Payments"
+
+
+def contacts_from_first_party_page(
+    company,
+    page_url,
+    page_html,
+    company_domain,
+):
+    contacts = []
+    text = html_to_text(page_html)
+
+    for email in emails_on_company_domain(page_html, company_domain):
+        local = email.split("@")[0]
+        contacts.append(
+            {
+                "contact_name": "",
+                "contact_role": "",
+                "contact_email": email,
+                "contact_url": page_url,
+                "contact_type": (
+                    "role_mailbox" if is_role_mailbox(local) else "work_email"
+                ),
+                "source_url": page_url,
+                "confidence": "HIGH",
+                "first_party": 1,
+                "page_text": text,
+            }
+        )
+
+    for link in extract_contact_links(page_html, page_url):
+        if registrable_domain(domain_from_url(link)) == company_domain:
+            contacts.append(
+                {
+                    "contact_name": "",
+                    "contact_role": "",
+                    "contact_email": None,
+                    "contact_url": link,
+                    "contact_type": "contact_page",
+                    "source_url": page_url,
+                    "confidence": "MEDIUM",
+                    "first_party": 1,
+                    "page_text": text,
+                }
+            )
+
+    return contacts
+
+
+def discover_contacts_for_lead(company, lead, fetch_budget):
+    company_domain = registrable_domain(
+        domain_from_url(lead.get("source_url", ""))
+    )
+    contacts = []
+    fetches = 0
+
+    def add_from_url(url):
+        nonlocal fetches
+
+        if fetches >= fetch_budget:
+            return
+
+        html = safe_fetch(url)
+        fetches += 1
+
+        if html:
+            contacts.extend(
+                contacts_from_first_party_page(
+                    company,
+                    url,
+                    html,
+                    company_domain,
+                )
+            )
+
+    evidence_url = lead.get("source_url", "")
+
+    if evidence_url and company_domain_match(company, evidence_url):
+        add_from_url(evidence_url)
+
+    queries = [
+        template.format(company=company)
+        for template in CONTACT_QUERY_TEMPLATES
+    ]
+
+    if company_domain:
+        queries.append(f"site:{company_domain} contact")
+
+    seen_urls = set()
+    ddgs = None
+
+    try:
+        ddgs = DDGS(timeout=20)
+    except Exception:
+        ddgs = None
+
+    if ddgs is not None:
+        for query in queries[:3]:
+            try:
+                results = ddgs.text(
+                    query,
+                    region="wt-wt",
+                    safesearch="moderate",
+                    max_results=4,
+                )
+            except Exception:
+                results = []
+
+            for item in results or []:
+                url = item.get("href", "")
+
+                if not url or url in seen_urls:
+                    continue
+
+                seen_urls.add(url)
+
+                if not company_domain_match(company, url):
+                    continue
+
+                if fetches >= fetch_budget:
+                    break
+
+                add_from_url(url)
+
+    if not any(c.get("contact_email") for c in contacts):
+        for url in seen_urls:
+            if company_domain_match(company, url) and CONTACT_LINK_RE.search(url):
+                contacts.append(
+                    {
+                        "contact_name": "",
+                        "contact_role": "",
+                        "contact_email": None,
+                        "contact_url": url,
+                        "contact_type": "contact_page",
+                        "source_url": url,
+                        "confidence": "MEDIUM",
+                        "first_party": 1,
+                    }
+                )
+                break
+
+    if not any(
+        c.get("contact_email") or c.get("contact_type") == "contact_page"
+        for c in contacts
+    ):
+        for url in seen_urls:
+            if "linkedin.com/company/" in url.lower():
+                contacts.append(
+                    {
+                        "contact_name": "",
+                        "contact_role": "",
+                        "contact_email": None,
+                        "contact_url": url,
+                        "contact_type": "profile",
+                        "source_url": url,
+                        "confidence": "LOW",
+                        "first_party": 0,
+                    }
+                )
+                break
+
+    unique = []
+    seen = set()
+
+    for contact in contacts:
+        key = (contact.get("contact_email"), contact.get("contact_url"))
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+        unique.append(contact)
+
+    return unique, fetches
+
+
+CONTACT_CONFIDENCE_RANK = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
+
+
+def save_contact(conn, key, contact):
+    email = contact.get("contact_email")
+    url = contact.get("contact_url")
+
+    existing = None
+
+    if email:
+        existing = conn.execute(
+            """
+            SELECT *
+            FROM lead_contacts
+            WHERE company_key = ? AND contact_email = ?
+            """,
+            (key, email),
+        ).fetchone()
+
+    if existing is None and url:
+        existing = conn.execute(
+            """
+            SELECT *
+            FROM lead_contacts
+            WHERE company_key = ? AND contact_url = ?
+            """,
+            (key, url),
+        ).fetchone()
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    if existing is None:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO lead_contacts (
+                company_key, contact_name, contact_role, contact_email,
+                contact_url, contact_type, source_url, confidence,
+                verified_at, first_party
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                key,
+                contact.get("contact_name") or "",
+                contact.get("contact_role") or "",
+                email,
+                url,
+                contact.get("contact_type") or "",
+                contact.get("source_url") or "",
+                contact.get("confidence") or "LOW",
+                now,
+                1 if contact.get("first_party") else 0,
+            ),
+        )
+        return "NEW"
+
+    if CONTACT_CONFIDENCE_RANK.get(
+        contact.get("confidence"), 0
+    ) > CONTACT_CONFIDENCE_RANK.get(existing["confidence"], 0):
+        conn.execute(
+            """
+            UPDATE lead_contacts
+            SET contact_name = ?, contact_role = ?, contact_email = ?,
+                contact_url = ?, contact_type = ?, source_url = ?,
+                confidence = ?, verified_at = ?, first_party = ?
+            WHERE id = ?
+            """,
+            (
+                contact.get("contact_name") or existing["contact_name"] or "",
+                contact.get("contact_role") or existing["contact_role"] or "",
+                email or existing["contact_email"],
+                url or existing["contact_url"],
+                contact.get("contact_type") or existing["contact_type"] or "",
+                contact.get("source_url") or existing["source_url"] or "",
+                contact.get("confidence"),
+                now,
+                1 if contact.get("first_party") else existing["first_party"],
+                existing["id"],
+            ),
+        )
+        return "UPGRADED"
+
+    return "KNOWN"
+
+
+def discover_contacts(conn, leads, max_leads=3, fetch_budget=6):
+    records = []
+    new_count = 0
+    upgraded_count = 0
+    fetches = 0
+
+    for lead in leads[:max_leads]:
+        if fetches >= fetch_budget:
+            break
+
+        company = lead["company"]
+        key = company_key(company)
+
+        try:
+            found, used = discover_contacts_for_lead(
+                company,
+                lead,
+                fetch_budget - fetches,
+            )
+        except Exception as exc:
+            print(
+                "CONTACT DISCOVERY FAILED: "
+                + safe_error(str(exc)),
+                flush=True,
+            )
+            found, used = [], 0
+
+        fetches += used
+
+        role = choose_target_role(
+            lead,
+            " ".join(c.get("page_text", "") for c in found),
+        )
+
+        best = None
+
+        for contact in found:
+            contact.pop("page_text", None)
+
+            if not contact.get("contact_role"):
+                contact["contact_role"] = role
+
+            outcome = save_contact(conn, key, contact)
+
+            if outcome == "NEW":
+                new_count += 1
+            elif outcome == "UPGRADED":
+                upgraded_count += 1
+
+            if best is None or CONTACT_CONFIDENCE_RANK.get(
+                contact.get("confidence"), 0
+            ) > CONTACT_CONFIDENCE_RANK.get(best.get("confidence"), 0):
+                best = contact
+
+        if best is None:
+            best = {
+                "contact_name": "",
+                "contact_role": role,
+                "contact_email": None,
+                "contact_url": "",
+                "contact_type": "none",
+                "source_url": lead.get("source_url", ""),
+                "confidence": "LOW",
+                "first_party": 0,
+            }
+
+        records.append(
+            {
+                "company": company,
+                "contact_name": best.get("contact_name") or "NOT IDENTIFIED",
+                "contact_role": best.get("contact_role") or role,
+                "contact_email": (
+                    best.get("contact_email") or "NOT PUBLICLY VERIFIED"
+                ),
+                "contact_url": best.get("contact_url") or "",
+                "contact_type": best.get("contact_type") or "none",
+                "source_url": best.get("source_url") or lead.get("source_url", ""),
+                "confidence": best.get("confidence") or "LOW",
+            }
+        )
+
+    conn.commit()
+
+    return records, new_count, upgraded_count, fetches
+
+
+def record_research_result(
+    conn,
+    run_id,
+    run_time,
+    mission,
+    item,
+    decision,
+    reason,
+    key=None,
+):
+    conn.execute(
+        """
+        INSERT INTO research_results (
+            run_id, run_timestamp, mission, query, result_index,
+            title, url, domain, snippet, decision, decision_reason,
+            company_key, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            run_id,
+            run_time,
+            mission,
+            str(item.get("query", ""))[:200],
+            item.get("id"),
+            str(item.get("title", ""))[:300],
+            str(item.get("url", ""))[:500],
+            domain_from_url(item.get("url", "")),
+            str(item.get("snippet", ""))[:700],
+            decision,
+            str(reason or "")[:200],
+            key,
+            datetime.now(timezone.utc).isoformat(),
+        ),
+    )
+
+
+def record_legacy_rejections(conn, run_id, run_time, mission_name, legacy_rejected):
+    for item in legacy_rejected or []:
+        try:
+            record_research_result(
+                conn,
+                run_id,
+                run_time,
+                mission_name,
+                {
+                    "id": None,
+                    "query": "legacy-revalidation",
+                    "title": item.get("company", ""),
+                    "url": item.get("source_url", ""),
+                    "snippet": item.get("reason", ""),
+                },
+                "LEGACY_REJECTED",
+                item.get("reason", ""),
+                company_key(item.get("company", "")),
+            )
+        except Exception:
+            pass
+
+    try:
+        conn.commit()
+    except Exception:
+        pass
+
+
+def normalize_query(query):
+    text = re.sub(r"[\"'`]", "", str(query or "").lower())
+    text = re.sub(r"\s+", " ", text)
+
+    return text.strip()
+
+
+def recent_normalized_queries(conn, limit=60):
+    rows = conn.execute(
+        """
+        SELECT normalized_query
+        FROM search_history
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (int(limit),),
+    ).fetchall()
+
+    return {row["normalized_query"] for row in rows}
+
+
+def record_search_history(conn, run_id, mission, queries, counts_by_query):
+    now = datetime.now(timezone.utc).isoformat()
+
+    for query in queries:
+        conn.execute(
+            """
+            INSERT INTO search_history (
+                run_id, timestamp, mission, query, normalized_query, results_count
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                run_id,
+                now,
+                mission,
+                query,
+                normalize_query(query),
+                int(counts_by_query.get(query, 0)),
+            ),
+        )
+
+    conn.commit()
+
+
+GEO_ROTATION = (
+    "Italy", "Germany", "France", "Spain", "Netherlands", "United Kingdom",
+    "Saudi Arabia", "United Arab Emirates", "Nordics", "Benelux", "Poland",
+    "Ireland", "Switzerland", "Singapore", "Australia", "Canada",
+)
+
+
+EXPERIMENT_ANGLES = (
+    '"ISO 20022" payment exception handling',
+    '"ISO 20022" payment repair workflow',
+    '"ISO 20022" structured payment data',
+    "payment operations automation bank",
+    "cross-border payment transformation",
+    "transaction banking modernization",
+    "payment message validation enterprise",
+    "legacy payment transformation",
+    "payment orchestration platform",
+    "embedded payments ISO 20022",
+    "banking-as-a-service payments",
+    "treasury payment platform modernization",
+)
+
+
+MISSION_ANGLES = {
+    "Banks / ISO 20022": [
+        "ISO 20022 migration bank",
+        "bank payment modernization",
+        "cross-border payment transformation bank",
+        "transaction banking modernization",
+        "payment repair operations bank",
+        "structured payment data bank",
+        "payment exception handling bank",
+        "legacy payment transformation bank",
+    ],
+    "PSP / Payment Processors": [
+        "payment processor ISO 20022",
+        "cross-border PSP modernization",
+        "payment operations automation PSP",
+        "payment message validation processor",
+        "transaction repair workflows PSP",
+    ],
+    "Fintech": [
+        "B2B payments platform",
+        "treasury platform ISO 20022",
+        "cross-border fintech payments",
+        "payment orchestration platform",
+        "embedded payments fintech",
+        "banking-as-a-service payments",
+    ],
+    "Europe Research": [
+        "ISO 20022 Italy bank",
+        "ISO 20022 Germany bank",
+        "ISO 20022 France bank",
+        "ISO 20022 Spain bank",
+        "ISO 20022 Netherlands bank",
+        "ISO 20022 United Kingdom bank",
+    ],
+    "Middle East Research": [
+        "ISO 20022 Saudi Arabia bank",
+        "ISO 20022 UAE bank",
+        "payment modernization Saudi Arabia",
+        "payment modernization UAE",
+    ],
+}
+
+
+def experiment_queries(mission, offset):
+    geos = mission.get("geographies") or list(GEO_ROTATION)
+    base = list(EXPERIMENT_ANGLES)
+    out = []
+
+    for i in range(min(4, len(base))):
+        angle = base[(offset + i) % len(base)]
+        geo = geos[(offset + i) % len(geos)] if geos else ""
+        out.append(f"{angle} {geo}".strip())
+
+    return out
+
+
+def plan_queries(conn, mission):
+    mission_name = mission.get("name", "")
+    pool = list(mission.get("queries", []))
+    pool.extend(MISSION_ANGLES.get(mission_name, []))
+
+    recent = recent_normalized_queries(conn)
+
+    runs = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM research_runs
+        WHERE mission = ?
+        """,
+        (mission_name,),
+    ).fetchone()[0]
+
+    if pool:
+        offset = int(runs) % len(pool)
+        ordered = pool[offset:] + pool[:offset]
+    else:
+        ordered = []
+
+    chosen = []
+    kinds = {}
+
+    for query in ordered:
+        normalized = normalize_query(query)
+
+        if not normalized or normalized in recent:
+            continue
+
+        chosen.append(query)
+        kinds[query] = "exploration"
+
+        if len(chosen) >= 6:
+            break
+
+    lead_limit = int(mission.get("existing_lead_limit", 0) or 0)
+
+    if lead_limit:
+        for query in existing_lead_queries(conn, lead_limit):
+            if len(chosen) >= 8:
+                break
+
+            chosen.append(query)
+            kinds[query] = "follow_up"
+
+    if len(chosen) < 6:
+        for query in experiment_queries(mission, runs):
+            normalized = normalize_query(query)
+
+            if normalized in recent or query in chosen:
+                continue
+
+            chosen.append(query)
+            kinds[query] = "experiment"
+
+            if len(chosen) >= 6:
+                break
+
+    return chosen[:8], kinds
+
+
+def classify_company(conn, company, source_url):
+    key = company_key(company)
+
+    if not key:
+        return "REJECTED"
+
+    existing = conn.execute(
+        """
+        SELECT company_key
+        FROM leads
+        WHERE company_key = ?
+        """,
+        (key,),
+    ).fetchone()
+
+    if existing is None:
+        return "NEW_COMPANY"
+
+    if evidence_is_new(conn, key, source_url):
+        return "EXISTING_COMPANY_NEW_EVIDENCE"
+
+    return "ALREADY_KNOWN_NO_CHANGE"
 
 
 def run_workforce(
@@ -2188,19 +3449,16 @@ STRICT RULES:
         flush=True,
     )
 
-    queries = list(mission.get("queries", []))
-
-    lead_limit = int(
-        mission.get("existing_lead_limit", 0) or 0
+    queries, query_kinds = plan_queries(
+        conn,
+        mission,
     )
 
-    if lead_limit:
-        queries = queries[: max(0, 8 - lead_limit)]
-        queries.extend(
-            existing_lead_queries(conn, lead_limit)
-        )
-
-    queries = queries[:8]
+    new_angles = [
+        query
+        for query, kind in query_kinds.items()
+        if kind in ("exploration", "experiment")
+    ]
 
     status.set_agent("nova", "COMPLETE", task="Research strategy prepared")
     status.log("NOVA", "Strategy completed")
@@ -2238,6 +3496,27 @@ STRICT RULES:
         flush=True,
     )
 
+    counts_by_query = {}
+
+    for item in search_results:
+        query = item.get("query", "")
+        counts_by_query[query] = counts_by_query.get(query, 0) + 1
+
+    try:
+        record_search_history(
+            conn,
+            status.run_id,
+            mission["name"],
+            queries,
+            counts_by_query,
+        )
+    except Exception as exc:
+        print(
+            "SEARCH HISTORY WRITE FAILED: "
+            + safe_error(str(exc)),
+            flush=True,
+        )
+
     status.set_agent(
         "scout",
         "COMPLETE",
@@ -2254,6 +3533,9 @@ STRICT RULES:
     status.write()
 
     verified = extract_verified_leads(
+        conn,
+        status.run_id,
+        run_time,
         search_results,
         mission,
         rejection_stats,
@@ -2284,7 +3566,7 @@ STRICT RULES:
         verified
     )
 
-    new_leads, enriched_leads = save_or_enrich_leads(
+    new_leads, enriched_leads, legacy_rejected = save_or_enrich_leads(
         conn,
         unique_leads,
     )
@@ -2300,6 +3582,7 @@ STRICT RULES:
     )
 
     status.set_metric("newLeads", len(new_leads))
+    status.set_metric("newCompanies", len(new_leads))
     status.set_metric("enrichedLeads", len(enriched_leads))
     status.set_metric(
         "rejectedCandidates",
@@ -2318,6 +3601,59 @@ STRICT RULES:
     )
     status.log("ATLAS", "Enrichment started")
     status.write()
+
+    if legacy_rejected:
+        record_legacy_rejections(
+            conn,
+            status.run_id,
+            run_time,
+            mission["name"],
+            legacy_rejected,
+        )
+        status.log(
+            "VERIFY",
+            f"Legacy leads skipped: {len(legacy_rejected)}",
+        )
+        status.write()
+
+    active_leads = [
+        lead
+        for lead in (new_leads + enriched_leads)
+        if revalidate_lead(lead["company"], lead["source_url"])[0]
+    ]
+
+    contact_records, new_contacts_count, upgraded_contacts, contact_fetches = discover_contacts(
+        conn,
+        active_leads,
+        max_leads=3,
+        fetch_budget=6,
+    )
+
+    print(
+        (
+            "CONTACTS: "
+            f"{len(contact_records)} leads with contact data "
+            f"({new_contacts_count} new, {upgraded_contacts} upgraded, "
+            f"{contact_fetches} pages fetched)"
+        ),
+        flush=True,
+    )
+
+    status.log(
+        "ATLAS",
+        f"Contacts discovered: {new_contacts_count} new",
+    )
+    status.set_metric("newContacts", new_contacts_count)
+    status.write()
+
+    contact_by_company = {
+        record["company"]: record for record in contact_records
+    }
+
+    for lead in active_leads:
+        record = contact_by_company.get(lead["company"])
+        if record:
+            lead["contact"] = record
 
     for lead in new_leads:
         print_lead_for_review(
@@ -2342,7 +3678,7 @@ STRICT RULES:
     status.log("PIPER", "Drafting outreach (DRAFT ONLY - not sent)")
     status.write()
 
-    outreach_targets = new_leads + enriched_leads
+    outreach_targets = active_leads
 
     outreach_drafts = create_outreach(
         outreach_targets
@@ -2478,6 +3814,11 @@ STRICT RULES:
         "review": review,
         "total": total,
         "review_count": review_count,
+        "contacts": contact_records,
+        "new_companies": [lead["company"] for lead in new_leads],
+        "new_contacts_count": new_contacts_count,
+        "new_angles": new_angles,
+        "legacy_rejected": legacy_rejected,
     }
 
 
@@ -2550,6 +3891,11 @@ def main():
         "review": "",
         "total": 0,
         "review_count": 0,
+        "contacts": [],
+        "new_companies": [],
+        "new_contacts_count": 0,
+        "new_angles": [],
+        "legacy_rejected": [],
     }
 
     try:
@@ -2630,6 +3976,11 @@ def main():
         data["review"],
         data["total"],
         data["review_count"],
+        data.get("contacts", []),
+        data.get("new_companies", []),
+        data.get("new_contacts_count", 0),
+        data.get("new_angles", []),
+        data.get("legacy_rejected", []),
     )
 
     send_daily_report(
