@@ -1726,6 +1726,7 @@ Output exactly these fields, once:
 COMPANY:
 TARGET ROLE:
 TARGET PERSON:
+PUBLIC PROFESSIONAL EMAIL:
 CONTACT METHOD:
 CONTACT SOURCE:
 EVIDENCE USED:
@@ -1740,12 +1741,15 @@ STRICT RULES:
 - Do not output multiple alternatives.
 - Maximum 120 words in the EMAIL.
 - Use only the supplied evidence and supplied contact data.
-- The CONTACT METHOD and CONTACT SOURCE must come only from the supplied
-  contact data; never invent a contact method or source.
-- If the supplied contact email is "NOT PUBLICLY VERIFIED", write exactly
-  that; never guess an address.
-- If the supplied target person is "NOT IDENTIFIED", write exactly that;
-  never invent a person's name.
+- TARGET PERSON must be the supplied verified person's name, or exactly
+  "NOT IDENTIFIED". Never put a job title, role or the target role in
+  TARGET PERSON.
+- PUBLIC PROFESSIONAL EMAIL must be the supplied verified email, or exactly
+  "NOT PUBLICLY VERIFIED". Never invent or guess an address.
+- CONTACT METHOD must be "Public professional email", "Official contact page"
+  or "Professional profile", taken from the supplied contact data.
+- The CONTACT SOURCE must come only from the supplied contact data; never
+  invent a contact source.
 - Never call CloudNova a leader.
 - Never claim CloudNova has existing customers.
 - Never invent contact names or people.
@@ -1764,15 +1768,24 @@ STRICT RULES:
   Head of Payments, Head of Payment Operations,
   Payments Technology Lead, Transaction Banking Technology Lead.
 - Phrase the message as exploratory business development.
+- Open with a concrete observation grounded in the supplied first-party
+  evidence, for example:
+  "I noticed <Company>'s public material on ISO 20022 readiness and migration."
 - Use language such as:
-  "I noticed your public material regarding..."
   "We are developing..."
   "We are exploring whether..."
   "Would you be open to a short discovery conversation?"
-- Do NOT say:
+- Keep the product description close to:
+  "CloudNova PaymentOps is an early-stage platform exploring ways to support
+  ISO 20022 payment validation, analysis and repair workflows."
+- Do NOT use filler or unsupported framing such as:
+  "It aligns with the regulatory focus you've highlighted."
   "I am confident we can..."
   "we ensure compliance..."
+  "we guarantee compliance..."
   "we prevent fraud..."
+  "we are production-proven..."
+  "we are market-leading..."
   "we will reduce costs..."
 - End with a request for a short discovery conversation.
 - Do NOT send anything.
@@ -1783,6 +1796,67 @@ STRICT RULES:
         prompt,
         max_tokens=700,
     )
+
+
+OUTREACH_FIELD_RE = re.compile(r"^([A-Z][A-Z /]+):\s*(.*)$")
+
+
+def sanitize_outreach_draft(draft, lead):
+    """Force verified-only contact fields; a role is never a person."""
+    contact = lead.get("contact") or {}
+    email = str(contact.get("contact_email") or "").strip()
+    verified_email = email if "@" in email else "NOT PUBLICLY VERIFIED"
+
+    person = str(contact.get("contact_name") or "").strip()
+
+    if not person or person.upper() == "NOT IDENTIFIED":
+        person = "NOT IDENTIFIED"
+
+    role = str(
+        contact.get("contact_role")
+        or lead.get("target_role")
+        or "Head of Payments"
+    ).strip()
+
+    ctype = str(contact.get("contact_type") or "none").strip()
+
+    if "@" in email:
+        method = "Public professional email"
+    elif ctype == "contact_page":
+        method = "Official contact page"
+    elif ctype == "profile":
+        method = "Professional profile"
+    else:
+        method = "Official contact page / professional profile"
+
+    source = contact.get("source_url") or lead.get("source_url") or ""
+
+    fields = {
+        "TARGET ROLE": role,
+        "TARGET PERSON": person,
+        "PUBLIC PROFESSIONAL EMAIL": verified_email,
+        "CONTACT METHOD": method,
+        "CONTACT SOURCE": source,
+    }
+
+    out = []
+    seen = set()
+
+    for line in str(draft or "").splitlines():
+        match = OUTREACH_FIELD_RE.match(line)
+
+        if match and match.group(1).strip() in fields:
+            name = match.group(1).strip()
+            out.append(f"{name}: {fields[name]}")
+            seen.add(name)
+        else:
+            out.append(line)
+
+    for name, value in fields.items():
+        if name not in seen:
+            out.append(f"{name}: {value}")
+
+    return "\n".join(out)
 
 
 def create_outreach(leads, max_drafts=4):
@@ -1807,13 +1881,65 @@ def create_outreach(leads, max_drafts=4):
         drafts.append(
             {
                 "company": lead["company"],
-                "draft": create_outreach_for_lead(
-                    lead
+                "draft": sanitize_outreach_draft(
+                    create_outreach_for_lead(
+                        lead
+                    ),
+                    lead,
                 ),
             }
         )
 
     return drafts
+
+
+PROHIBITED_OUTREACH_PHRASES = (
+    "guarantee compliance",
+    "guarantees compliance",
+    "guaranteed compliance",
+    "guarantee regulatory compliance",
+    "guarantees regulatory compliance",
+    "ensure compliance",
+    "ensures compliance",
+    "ensuring compliance",
+    "fraud prevention",
+    "fraud-prevention",
+    "prevent fraud",
+    "prevents fraud",
+    "production-proven",
+    "production proven",
+    "market-leading",
+    "market leading",
+    "market leader",
+    "guaranteed savings",
+    "guarantee savings",
+    "guaranteed cost savings",
+    "guaranteed operational improvements",
+)
+
+
+def find_unsupported_claims(text):
+    hay = re.sub(r"\s+", " ", str(text or "").lower())
+    found = []
+
+    for phrase in PROHIBITED_OUTREACH_PHRASES:
+        if phrase in hay and phrase not in found:
+            found.append(phrase)
+
+    return found
+
+
+def enforce_unsupported_claims(review, unsupported):
+    value = "NONE" if not unsupported else "; ".join(sorted(set(unsupported)))
+    text = str(review or "")
+    pattern = re.compile(
+        r"(?im)^(\s*(?:\d+\.\s*)?Unsupported claims found\s*:\s*).*$"
+    )
+
+    if pattern.search(text):
+        return pattern.sub(lambda match: match.group(1) + value, text)
+
+    return text.rstrip() + f"\n\nUnsupported claims found: {value}"
 
 
 def operations_review(
@@ -1825,6 +1951,9 @@ def operations_review(
             "Candidate leads: 0\n"
             "No per-lead review required."
         )
+
+    unsupported = find_unsupported_claims(outreach)
+    unsupported_text = ", ".join(unsupported) if unsupported else "NONE"
 
     prompt = f"""
 You are CloudNova's strict Business Development Quality Gate.
@@ -1840,6 +1969,10 @@ CANDIDATE LEADS:
 OUTREACH DRAFTS:
 
 {outreach}
+
+DETERMINISTIC PROHIBITED-PHRASE SCAN OF THE ACTUAL OUTREACH DRAFTS:
+
+{unsupported_text}
 
 Evaluate ONLY the candidate leads listed above.
 Do NOT invent leads, do NOT reference "Lead #1" unless it is listed above,
@@ -1890,14 +2023,21 @@ STRICT RULES:
 - Flag production-proven claims.
 - Flag unsupported PaymentOps capabilities.
 - External outreach always requires explicit human approval.
+- For the section "Unsupported claims found", report EXACTLY the
+  deterministic scan above and nothing else. If it is NONE, output exactly
+  "Unsupported claims found: NONE".
+- Do NOT invent unsupported claims: a prohibited phrase only counts if it
+  literally appears in the outreach drafts above.
 
 No email has been sent.
 """
 
-    return ollama(
+    review = ollama(
         prompt,
         max_tokens=700,
     )
+
+    return enforce_unsupported_claims(review, unsupported)
 
 
 def print_lead_for_review(lead):
@@ -2516,11 +2656,32 @@ PERSONAL_EMAIL_DOMAINS = {
 
 ROLE_MAILBOX_PREFIXES = {
     "payments", "payment", "iso20022", "iso", "iso-20022",
+    "treasury", "operations", "transaction", "corporate",
+    "business", "sales", "trade",
+}
+
+GENERIC_MAILBOX_PREFIXES = {
     "info", "contact", "enquiries", "enquiry", "inquiries",
-    "inquiry", "sales", "business", "corporate", "treasury",
-    "operations", "op", "compliance", "press", "media",
-    "investor", "investors", "hello", "team", "support",
-    "general", "office",
+    "inquiry", "hello", "team", "general", "office",
+    "press", "media", "investor", "investors", "careers", "jobs",
+}
+
+# footer/legal/privacy/security/webmaster/cookie/support style addresses are
+# not useful prospecting routes and are ignored unless they are the only route.
+IGNORED_MAILBOX_PREFIXES = {
+    "privacy", "legal", "security", "webmaster", "cookie", "cookies",
+    "support", "abuse", "postmaster", "noreply", "no-reply", "donotreply",
+    "dmca", "unsubscribe", "complaints", "gdpr", "dpo", "dataprotection",
+    "dataprivacy", "helpdesk", "help",
+}
+
+MAX_NEW_CONTACTS_PER_COMPANY = 3
+
+CONTACT_TYPE_RANK = {
+    "role_mailbox": 4,
+    "work_email": 3,
+    "contact_page": 2,
+    "profile": 1,
 }
 
 BAD_EMAIL_SUFFIXES = (
@@ -2639,12 +2800,42 @@ def html_to_text(html):
     return text.strip()
 
 
-def is_role_mailbox(local):
-    local = (local or "").lower()
+def _mailbox_tokens(local):
+    return [
+        token
+        for token in re.split(r"[^a-z0-9]+", (local or "").lower())
+        if token
+    ]
 
-    return local in ROLE_MAILBOX_PREFIXES or local.startswith(
+
+def is_role_mailbox(local):
+    tokens = _mailbox_tokens(local)
+
+    if not tokens:
+        return False
+
+    first = tokens[0]
+
+    return first in ROLE_MAILBOX_PREFIXES or first.startswith(
         ("payments", "iso", "treasury", "operations", "transaction")
     )
+
+
+def is_ignored_mailbox(local):
+    return any(
+        token in IGNORED_MAILBOX_PREFIXES
+        for token in _mailbox_tokens(local)
+    )
+
+
+def is_generic_mailbox(local):
+    tokens = _mailbox_tokens(local)
+
+    return bool(tokens) and tokens[0] in GENERIC_MAILBOX_PREFIXES
+
+
+def contact_rank(contact):
+    return CONTACT_TYPE_RANK.get(contact.get("contact_type"), 0)
 
 
 def emails_on_company_domain(text, company_domain):
@@ -2712,6 +2903,10 @@ def contacts_from_first_party_page(
 
     for email in emails_on_company_domain(page_html, company_domain):
         local = email.split("@")[0]
+
+        if is_ignored_mailbox(local):
+            continue
+
         contacts.append(
             {
                 "contact_name": "",
@@ -2877,14 +3072,12 @@ def discover_contacts_for_lead(company, lead, fetch_budget):
 CONTACT_CONFIDENCE_RANK = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
 
 
-def save_contact(conn, key, contact):
-    email = contact.get("contact_email")
-    url = contact.get("contact_url")
-
-    existing = None
+def find_contact(conn, key, contact):
+    email = (contact.get("contact_email") or "").lower() or None
+    url = contact.get("contact_url") or None
 
     if email:
-        existing = conn.execute(
+        row = conn.execute(
             """
             SELECT *
             FROM lead_contacts
@@ -2893,8 +3086,11 @@ def save_contact(conn, key, contact):
             (key, email),
         ).fetchone()
 
-    if existing is None and url:
-        existing = conn.execute(
+        if row:
+            return row
+
+    if url:
+        row = conn.execute(
             """
             SELECT *
             FROM lead_contacts
@@ -2902,6 +3098,22 @@ def save_contact(conn, key, contact):
             """,
             (key, url),
         ).fetchone()
+
+        if row:
+            return row
+
+    return None
+
+
+def save_contact(conn, key, contact):
+    contact = dict(contact)
+    contact["contact_email"] = (contact.get("contact_email") or "").lower() or None
+    contact["contact_url"] = contact.get("contact_url") or None
+
+    email = contact["contact_email"]
+    url = contact["contact_url"]
+
+    existing = find_contact(conn, key, contact)
 
     now = datetime.now(timezone.utc).isoformat()
 
@@ -2993,7 +3205,8 @@ def discover_contacts(conn, leads, max_leads=3, fetch_budget=6):
             " ".join(c.get("page_text", "") for c in found),
         )
 
-        best = None
+        candidates = []
+        seen_keys = set()
 
         for contact in found:
             contact.pop("page_text", None)
@@ -3001,17 +3214,51 @@ def discover_contacts(conn, leads, max_leads=3, fetch_budget=6):
             if not contact.get("contact_role"):
                 contact["contact_role"] = role
 
+            email = (contact.get("contact_email") or "").lower()
+
+            if email:
+                local = email.split("@")[0]
+
+                if is_ignored_mailbox(local):
+                    continue
+
+                contact["contact_email"] = email
+
+            if contact_rank(contact) <= 0:
+                continue
+
+            dedupe_key = email or (contact.get("contact_url") or "").lower()
+
+            if not dedupe_key or dedupe_key in seen_keys:
+                continue
+
+            seen_keys.add(dedupe_key)
+            candidates.append(contact)
+
+        candidates.sort(
+            key=lambda c: (
+                contact_rank(c),
+                CONTACT_CONFIDENCE_RANK.get(c.get("confidence"), 0),
+            ),
+            reverse=True,
+        )
+
+        best = candidates[0] if candidates else None
+        new_for_company = 0
+
+        for contact in candidates:
+            already = find_contact(conn, key, contact) is not None
+
+            if not already and new_for_company >= MAX_NEW_CONTACTS_PER_COMPANY:
+                continue
+
             outcome = save_contact(conn, key, contact)
 
             if outcome == "NEW":
+                new_for_company += 1
                 new_count += 1
             elif outcome == "UPGRADED":
                 upgraded_count += 1
-
-            if best is None or CONTACT_CONFIDENCE_RANK.get(
-                contact.get("confidence"), 0
-            ) > CONTACT_CONFIDENCE_RANK.get(best.get("confidence"), 0):
-                best = contact
 
         if best is None:
             best = {
