@@ -35,7 +35,7 @@ spec:
 
       containers:
         - name: cloudnova-books
-          image: ghcr.io/sanketnawale/cloudnova-books:sha-e42d822
+          image: ghcr.io/sanketnawale/cloudnova-books:sha-1f65a45
           imagePullPolicy: IfNotPresent
 
           ports:
