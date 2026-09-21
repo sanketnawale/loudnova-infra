@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudnova-books
+  namespace: cloudnova-books
+  labels:
+    app: cloudnova-books
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+
+  # Single replica static site: Recreate avoids a surge pod on the
+  # resource-constrained Hetzner node.
+  strategy:
+    type: Recreate
+
+  selector:
+    matchLabels:
+      app: cloudnova-books
+
+  template:
+    metadata:
+      labels:
+        app: cloudnova-books
+
+    spec:
+      automountServiceAccountToken: false
+
+      imagePullSecrets:
+        - name: ghcr-pull
+
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: cloudnova-books
+          image: ghcr.io/sanketnawale/cloudnova-books:sha-7ee6385
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 101
+            runAsGroup: 101
+            capabilities:
+              drop:
+                - ALL
+
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+
+          volumeMounts:
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+
+            - name: nginx-run
+              mountPath: /var/run
+
+            - name: tmp
+              mountPath: /tmp
+
+      volumes:
+        - name: nginx-cache
+          emptyDir: {}
+
+        - name: nginx-run
+          emptyDir: {}
+
+        - name: tmp
+          emptyDir: {}

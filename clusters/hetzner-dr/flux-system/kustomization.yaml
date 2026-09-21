@@ -16,3 +16,4 @@ resources:
   - mira-web.yaml
   - cloudnova-agents.yaml
   - paymentops-site.yaml
+  - cloudnova-books.yaml
