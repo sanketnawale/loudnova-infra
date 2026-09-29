@@ -28,7 +28,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: paymentops-website
-          image: ghcr.io/cloodnova/paymentops-website:aa86ea85eea15119dbcae10268e0b965c6456d1d
+          image: ghcr.io/cloodnova/paymentops-website:ecd62aff22c1e9350f48ef3ef46c253d22d57a94
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -43,6 +43,26 @@ spec:
               value: G-NS75TXH0CQ
             - name: GA_MEASUREMENT_ID
               value: G-NS75TXH0CQ
+            - name: SMTP_HOST
+              value: server376.web-hosting.com
+            - name: SMTP_PORT
+              value: "465"
+            - name: SMTP_SECURE
+              value: "true"
+            - name: PAYMENTOPS_NOTIFICATION_EMAIL
+              value: paymentops@cloudnova.tech
+            - name: MAIL_FROM
+              value: "CloudNova PaymentOps <paymentops@cloudnova.tech>"
+            - name: SMTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: paymentops-site-smtp
+                  key: smtp-user
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: paymentops-site-smtp
+                  key: smtp-password
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
