@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
   - ../../base
+  - httproute.yaml
 
 # Immutable image tags for the hackathon deployment. Replace `sha-pending0001` with the
 # concrete tag actually published to the registry (see docs/PHASE2_DEPLOY.md). Do not use

@@ -1,13 +1,9 @@
-# Public route for the PaymentOps hackathon frontend.
+# Public route for the PaymentOps hackathon: frontend + the Evolus validation tool.
 #
-# NOTE: This file is intentionally NOT yet listed in the overlay kustomization. The app is
-# deployed and verified internally FIRST (Step 5); the route is added in Step 6 once the
-# hostname is confirmed. External exposure additionally requires a matching Cloudflare Tunnel
-# ingress rule and DNS record (remotely managed in Cloudflare Zero Trust) — the in-cluster
-# routing alone is not enough.
-#
-# TLS is terminated at Cloudflare (the shared public-gateway only has an HTTP listener; see
-# gateway.yaml). Do not invent a cert-manager issuer.
+# Exposed via the shared Cloudflare Tunnel -> Envoy `public-gateway` (host-based routing).
+# The tunnel origin is the Envoy data-plane Service `public-envoy`; Envoy dispatches by Host
+# header, exactly like the other published apps. TLS is terminated at Cloudflare (the gateway
+# listener is HTTP), so there is no in-cluster certificate/issuer here.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -19,9 +15,23 @@ spec:
       namespace: gateway-infra
       sectionName: http
   hostnames:
-    # Confirm before enabling; must match the Cloudflare Tunnel + DNS record.
     - paymentops-hackathon.cloudnova.tech
   rules:
-    - backendRefs:
+    # Evolus validation WebAPI tool -> API service (auth enforced by the app via X-Tool-Key).
+    # Only this narrow prefix reaches the API directly; operator endpoints stay behind the
+    # authenticated web proxy.
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api/v1/evolus
+      backendRefs:
+        - name: paymentops-hackathon-api
+          port: 8000
+    # Everything else (frontend + its same-origin auth/backend proxies) -> web service.
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
         - name: paymentops-hackathon-web
           port: 80
