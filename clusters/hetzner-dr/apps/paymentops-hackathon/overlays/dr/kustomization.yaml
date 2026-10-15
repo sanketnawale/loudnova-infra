@@ -10,6 +10,6 @@ resources:
 # `latest`.
 images:
   - name: ghcr.io/sanketnawale/paymentops-hackathon-api
-    newTag: 9ba7f59120616636e53d71bd737e36ca9d090526
+    newTag: cff57ce1cda2004d2d418c8838ca68b745c18ce4
   - name: ghcr.io/sanketnawale/paymentops-hackathon-web
-    newTag: 9ba7f59120616636e53d71bd737e36ca9d090526
+    newTag: cff57ce1cda2004d2d418c8838ca68b745c18ce4
