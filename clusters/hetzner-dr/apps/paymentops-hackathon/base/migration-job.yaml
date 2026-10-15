@@ -5,6 +5,10 @@ kind: Job
 metadata:
   name: paymentops-hackathon-migrate
   namespace: paymentops-hackathon
+  annotations:
+    # Job pod templates are immutable; allow Flux to re-create this Job when the image tag
+    # changes (migration is idempotent). See Flux Kustomization force override.
+    kustomize.toolkit.fluxcd.io/force: enabled
 spec:
   backoffLimit: 3
   template:
