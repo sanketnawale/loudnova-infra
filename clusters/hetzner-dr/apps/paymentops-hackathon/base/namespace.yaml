@@ -1,0 +1,13 @@
+# PaymentOps Hackathon — isolated namespace.
+# Reuses the CloudNova cluster conventions but shares nothing with the business
+# `paymentops` namespace (separate namespace, DB, secrets, selectors, hostname).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: paymentops-hackathon
+  labels:
+    app.kubernetes.io/part-of: cloudnova-paymentops-hackathon
+    app.kubernetes.io/component: hackathon
+    # Allows the shared public-gateway (Envoy Gateway) to attach HTTPRoutes from this
+    # namespace. This is the hetzner-dr gateway selector label.
+    platform.cloudnova.tech/public-routes: "true"

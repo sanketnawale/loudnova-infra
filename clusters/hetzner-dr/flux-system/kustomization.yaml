@@ -17,3 +17,4 @@ resources:
   - cloudnova-agents.yaml
   - paymentops-site.yaml
   - cloudnova-books.yaml
+  - paymentops-hackathon.yaml

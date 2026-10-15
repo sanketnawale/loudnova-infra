@@ -1,0 +1,27 @@
+# Public route for the PaymentOps hackathon frontend.
+#
+# NOTE: This file is intentionally NOT yet listed in the overlay kustomization. The app is
+# deployed and verified internally FIRST (Step 5); the route is added in Step 6 once the
+# hostname is confirmed. External exposure additionally requires a matching Cloudflare Tunnel
+# ingress rule and DNS record (remotely managed in Cloudflare Zero Trust) — the in-cluster
+# routing alone is not enough.
+#
+# TLS is terminated at Cloudflare (the shared public-gateway only has an HTTP listener; see
+# gateway.yaml). Do not invent a cert-manager issuer.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: paymentops-hackathon-web
+  namespace: paymentops-hackathon
+spec:
+  parentRefs:
+    - name: public-gateway
+      namespace: gateway-infra
+      sectionName: http
+  hostnames:
+    # Confirm before enabling; must match the Cloudflare Tunnel + DNS record.
+    - paymentops-hackathon.cloudnova.tech
+  rules:
+    - backendRefs:
+        - name: paymentops-hackathon-web
+          port: 80

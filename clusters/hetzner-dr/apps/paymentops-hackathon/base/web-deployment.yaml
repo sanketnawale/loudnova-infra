@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paymentops-hackathon-web
+  namespace: paymentops-hackathon
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: paymentops-hackathon-web
+  template:
+    metadata:
+      labels:
+        app: paymentops-hackathon-web
+    spec:
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: ghcr-pull
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: paymentops-hackathon-web
+          image: ghcr.io/sanketnawale/paymentops-hackathon-web:sha-pending0001
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            # Browser-facing base URL: same-origin proxy path (never an internal service URL).
+            - name: NEXT_PUBLIC_API_URL
+              value: /api/backend
+            - name: NEXT_PUBLIC_ENVIRONMENT
+              value: "HACKATHON"
+            # Server-only: where the Next.js proxy forwards requests (cluster-internal).
+            - name: PAYMENTOPS_INTERNAL_API_URL
+              value: http://paymentops-hackathon-api:8000
+            # Server-only operator credentials, injected by the proxy; never exposed to the
+            # browser and never placed in a NEXT_PUBLIC_* variable.
+            - name: PAYMENTOPS_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: paymentops-hackathon-web-operator
+                  key: client-id
+            - name: PAYMENTOPS_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: paymentops-hackathon-web-operator
+                  key: client-secret
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 30m
+              memory: 96Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          volumeMounts:
+            - name: next-cache
+              mountPath: /app/.next/cache
+      volumes:
+        - name: next-cache
+          emptyDir: {}

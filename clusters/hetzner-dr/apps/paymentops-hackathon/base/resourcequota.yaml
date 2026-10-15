@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: paymentops-hackathon-quota
+  namespace: paymentops-hackathon
+spec:
+  hard:
+    requests.cpu: "600m"
+    requests.memory: "900Mi"
+    limits.cpu: "2"
+    limits.memory: "2Gi"
+    pods: "6"

@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paymentops-hackathon-postgres
+  namespace: paymentops-hackathon
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: paymentops-hackathon-postgres
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: paymentops-hackathon-postgres
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+              protocol: TCP
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: paymentops-hackathon-config
+                  key: DATABASE_NAME
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: paymentops-hackathon-config
+                  key: DATABASE_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: paymentops-hackathon-secrets
+                  key: DATABASE_PASSWORD
+          # Postgres is the documented exception to the non-root rule (it must chown/drop
+          # from the image entrypoint on a fresh volume).
+          securityContext:
+            allowPrivilegeEscalation: false
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U paymentops_hackathon -d paymentops_hackathon"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U paymentops_hackathon -d paymentops_hackathon"]
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 384Mi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: paymentops-hackathon-postgres-pvc

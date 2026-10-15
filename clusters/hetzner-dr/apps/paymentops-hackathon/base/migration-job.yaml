@@ -1,0 +1,68 @@
+# One-shot Alembic migration job for the hackathon database only (through 0011_investigations).
+# Idempotent: `alembic upgrade head` is a no-op once at head.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: paymentops-hackathon-migrate
+  namespace: paymentops-hackathon
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: paymentops-hackathon-migrate
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: ghcr-pull
+      initContainers:
+        - name: wait-for-db
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - >-
+              until pg_isready -h paymentops-hackathon-postgres -U paymentops_hackathon
+              -d paymentops_hackathon; do sleep 2; done
+          securityContext:
+            allowPrivilegeEscalation: false
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 48Mi
+      containers:
+        - name: migrate
+          image: ghcr.io/sanketnawale/paymentops-hackathon-api:sha-pending0001
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "alembic upgrade head"]
+          envFrom:
+            - configMapRef:
+                name: paymentops-hackathon-config
+            - secretRef:
+                name: paymentops-hackathon-secrets
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 101
+            runAsGroup: 101
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 25m
+              memory: 96Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

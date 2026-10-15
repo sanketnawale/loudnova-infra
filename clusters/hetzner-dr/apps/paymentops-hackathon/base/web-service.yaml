@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: paymentops-hackathon-web
+  namespace: paymentops-hackathon
+spec:
+  type: ClusterIP
+  selector:
+    app: paymentops-hackathon-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

@@ -1,0 +1,79 @@
+# Namespace baseline: deny all ingress by default, then allow only required flows.
+# Egress left unrestricted (DNS + GHCR image pulls). No Redis/worker in this deployment.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: paymentops-hackathon-default-deny-ingress
+  namespace: paymentops-hackathon
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress: []
+---
+# Web console: reachable only from the Envoy Gateway data plane and within the namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: paymentops-hackathon-web-ingress
+  namespace: paymentops-hackathon
+spec:
+  podSelector:
+    matchLabels:
+      app: paymentops-hackathon-web
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: envoy-gateway-system
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 3000
+---
+# API: reachable from the web proxy within the namespace (and from a local port-forward).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: paymentops-hackathon-api-ingress
+  namespace: paymentops-hackathon
+spec:
+  podSelector:
+    matchLabels:
+      app: paymentops-hackathon-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8000
+---
+# PostgreSQL: reachable only from API / migration / seed pods in this namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: paymentops-hackathon-postgres-ingress
+  namespace: paymentops-hackathon
+spec:
+  podSelector:
+    matchLabels:
+      app: paymentops-hackathon-postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - paymentops-hackathon-api
+                  - paymentops-hackathon-migrate
+                  - paymentops-hackathon-seed
+      ports:
+        - protocol: TCP
+          port: 5432

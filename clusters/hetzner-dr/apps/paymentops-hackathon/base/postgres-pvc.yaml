@@ -1,0 +1,13 @@
+# Isolated PostgreSQL storage for the hackathon deployment.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: paymentops-hackathon-postgres-pvc
+  namespace: paymentops-hackathon
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 2Gi

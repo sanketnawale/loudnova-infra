@@ -1,0 +1,43 @@
+# Non-secret application configuration for the hackathon deployment.
+# Secrets are NEVER committed here; they are created out-of-band (see docs/PHASE2_DEPLOY.md).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: paymentops-hackathon-config
+  namespace: paymentops-hackathon
+data:
+  APP_ENVIRONMENT: "demo"
+  APP_DEBUG: "false"
+  APP_VERSION: "0.1.0-eval"
+  APP_LOG_LEVEL: "INFO"
+  API_HOST: "0.0.0.0"
+  API_PORT: "8000"
+  # Only the database is required for the investigation demo (no Redis/worker).
+  READY_CHECKS: "database"
+  METRICS_ENABLED: "true"
+  # CORS/allowed hosts must match the hackathon hostname once confirmed.
+  CORS_ALLOWED_ORIGINS: "https://paymentops-hackathon.cloudnova.tech"
+  ALLOWED_HOSTS: "paymentops-hackathon.cloudnova.tech,localhost"
+  AI_ENABLED: "false"
+  AI_PROVIDER: "none"
+  ZERO_RETENTION_ENABLED: "true"
+  RAW_PAYLOAD_TTL_SECONDS: "0"
+  DATABASE_NAME: "paymentops_hackathon"
+  DATABASE_USER: "paymentops_hackathon"
+  DATABASE_HOST: "paymentops-hackathon-postgres"
+  DATABASE_PORT: "5432"
+  # Deterministic address provider only; the optional Swift address service is NOT deployed.
+  ADDRESS_PROVIDER: "cloudnova"
+  # --- Evolus (AMD-powered investigator) ---
+  EVOLUS_ENABLED: "true"
+  EVOLUS_API_BASE_URL: "https://api.evolus.ai/api/v1"
+  EVOLUS_APPLICATION_ID: "115a7a88-a2c9-4951-b280-80b104a2f4a3"
+  EVOLUS_WORKFLOW_ID: "af52e17d-4f3c-4c57-817c-fe50c624ccb7"
+  EVOLUS_AGENT_ID: ""
+  EVOLUS_LIBRARY_ID: ""
+  # Tenant scope for the inbound validation tool (non-secret public id).
+  EVOLUS_DEMO_ORG_PUBLIC_ID: "cloudnova-hackathon-demo"
+  EVOLUS_REQUEST_TIMEOUT_SECONDS: "30"
+  EVOLUS_POLL_TIMEOUT_SECONDS: "90"
+  EVOLUS_POLL_INTERVAL_SECONDS: "2"
+  EVOLUS_MAX_RETRIES: "2"

@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+# Immutable image tags for the hackathon deployment. Replace `sha-pending0001` with the
+# concrete tag actually published to the registry (see docs/PHASE2_DEPLOY.md). Do not use
+# `latest`.
+images:
+  - name: ghcr.io/sanketnawale/paymentops-hackathon-api
+    newTag: ef7f8d626717ae41a3273cee0776274da6cd9769
+  - name: ghcr.io/sanketnawale/paymentops-hackathon-web
+    newTag: ef7f8d626717ae41a3273cee0776274da6cd9769

@@ -1,0 +1,93 @@
+# One-shot tenant seed: demo organization + operator API client + admin user.
+# Idempotent; reads non-secret values from the ConfigMap and secrets out-of-band.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: paymentops-hackathon-seed
+  namespace: paymentops-hackathon
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: paymentops-hackathon-seed
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: ghcr-pull
+      initContainers:
+        - name: wait-for-db
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - >-
+              until pg_isready -h paymentops-hackathon-postgres -U paymentops_hackathon
+              -d paymentops_hackathon; do sleep 2; done
+          securityContext:
+            allowPrivilegeEscalation: false
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 48Mi
+      containers:
+        - name: seed
+          image: ghcr.io/sanketnawale/paymentops-hackathon-api:sha-pending0001
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "python -m scripts.seed_hackathon"]
+          envFrom:
+            - configMapRef:
+                name: paymentops-hackathon-config
+            - secretRef:
+                name: paymentops-hackathon-secrets
+          env:
+            - name: PAYMENTOPS_HACKATHON_ORG_NAME
+              value: "CloudNova Hackathon Demo"
+            - name: PAYMENTOPS_OPERATOR_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: paymentops-hackathon-web-operator
+                  key: client-id
+            - name: PAYMENTOPS_OPERATOR_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: paymentops-hackathon-web-operator
+                  key: client-secret
+            - name: PAYMENTOPS_BOOTSTRAP_ADMIN_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: paymentops-hackathon-bootstrap
+                  key: admin-email
+            - name: PAYMENTOPS_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: paymentops-hackathon-bootstrap
+                  key: admin-password
+            - name: PAYMENTOPS_BOOTSTRAP_ADMIN_NAME
+              value: "Hackathon Operator"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 101
+            runAsGroup: 101
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 25m
+              memory: 96Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
