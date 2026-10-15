@@ -10,6 +10,8 @@ resources:
 # `latest`.
 images:
   - name: ghcr.io/sanketnawale/paymentops-hackathon-api
-    newTag: ef7f8d626717ae41a3273cee0776274da6cd9769
+    newTag: e7dac72b09a89fbe7c1c2bca96364c4dc7413d84
+  # Web is unchanged since this tag; the arm64 `next build` is intermittently flaky under
+  # QEMU emulation (SIGILL in SWC), so we keep the previously published equivalent image.
   - name: ghcr.io/sanketnawale/paymentops-hackathon-web
     newTag: ef7f8d626717ae41a3273cee0776274da6cd9769
