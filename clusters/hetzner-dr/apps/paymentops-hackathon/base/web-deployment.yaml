@@ -31,6 +31,10 @@ spec:
               containerPort: 3000
               protocol: TCP
           env:
+            # Kubernetes injects HOSTNAME=<pod name>; Next standalone would bind to that
+            # host. Force all-interfaces binding so Service traffic and probes work.
+            - name: HOSTNAME
+              value: "0.0.0.0"
             # Browser-facing base URL: same-origin proxy path (never an internal service URL).
             - name: NEXT_PUBLIC_API_URL
               value: /api/backend
