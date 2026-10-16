@@ -10,8 +10,6 @@ resources:
 # `latest`.
 images:
   - name: ghcr.io/sanketnawale/paymentops-hackathon-api
-    newTag: a49dcc515fc9673bec0f65fb94b6c2b8ded33d91
-  # Web is unchanged except a cosmetic line; the arm64 web build failed on a flaky
-  # `next/font` Google-Fonts fetch. Keep the previously published, equivalent web image.
+    newTag: 3e023d2cd3460bc4014fe9bd44bf73cd3ad7e782
   - name: ghcr.io/sanketnawale/paymentops-hackathon-web
-    newTag: cff57ce1cda2004d2d418c8838ca68b745c18ce4
+    newTag: 3e023d2cd3460bc4014fe9bd44bf73cd3ad7e782
