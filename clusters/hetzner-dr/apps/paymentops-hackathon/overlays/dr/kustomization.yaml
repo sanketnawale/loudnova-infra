@@ -12,4 +12,4 @@ images:
   - name: ghcr.io/sanketnawale/paymentops-hackathon-api
     newTag: c1235f5e70d18d80332592c98ec92f03c83da0dc
   - name: ghcr.io/sanketnawale/paymentops-hackathon-web
-    newTag: c1235f5e70d18d80332592c98ec92f03c83da0dc
+    newTag: f007767c5572855b55a25d8cdeaec263eda58e90
